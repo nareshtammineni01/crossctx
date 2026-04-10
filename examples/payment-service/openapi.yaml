@@ -1,0 +1,84 @@
+openapi: "3.0.3"
+info:
+  title: Payment Service
+  version: "1.0.0"
+  description: Handles payment processing
+servers:
+  - url: https://payment-service.internal:8081
+    description: Internal service
+paths:
+  /payments:
+    post:
+      summary: Process a payment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                orderId:
+                  type: string
+                amount:
+                  type: number
+                currency:
+                  type: string
+                method:
+                  type: string
+      responses:
+        "201":
+          description: Payment processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                  transactionId:
+                    type: string
+  /payments/{id}:
+    get:
+      summary: Get payment status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                  amount:
+                    type: number
+  /payments/{id}/refund:
+    post:
+      summary: Refund a payment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Refund processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundId:
+                    type: string
+                  status:
+                    type: string

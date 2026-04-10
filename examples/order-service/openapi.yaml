@@ -1,0 +1,86 @@
+openapi: "3.0.3"
+info:
+  title: Order Service
+  version: "1.0.0"
+  description: |
+    Manages orders. Depends on User Service (https://user-service.internal:8080)
+    for user validation and Payment Service (https://payment-service.internal:8081)
+    for payment processing.
+servers:
+  - url: https://order-service.internal:8082
+    description: Internal service
+paths:
+  /orders:
+    get:
+      summary: List all orders
+      responses:
+        "200":
+          description: A list of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    userId:
+                      type: string
+                    total:
+                      type: number
+                    status:
+                      type: string
+    post:
+      summary: Create a new order
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                items:
+                  type: array
+                paymentMethod:
+                  type: string
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+  /orders/{id}:
+    get:
+      summary: Get order by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  userId:
+                    type: string
+                  items:
+                    type: array
+                  total:
+                    type: number
+                  status:
+                    type: string
