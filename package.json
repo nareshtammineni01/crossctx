@@ -4,6 +4,7 @@
   "description": "Generate cross-service API dependency maps from OpenAPI/Swagger files",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "bin": {
     "crossctx": "./dist/bin/cli.js"
   },
@@ -45,6 +46,7 @@
     "LICENSE"
   ],
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
