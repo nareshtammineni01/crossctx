@@ -21,3 +21,6 @@ coverage/
 
 # Output
 crossctx-output.json
+crossctx-output.md
+crossctx-graph.html
+test-output.json

@@ -7,6 +7,8 @@ export { scanForSpecs } from "./scanner/index.js";
 export { parseSpec } from "./parser/index.js";
 export { analyzeDependencies } from "./analyzer/index.js";
 export { buildOutput, saveOutput, printSummary } from "./renderer/index.js";
+export { renderMarkdown, saveMarkdown } from "./renderer/markdown.js";
+export { renderGraph, saveGraph } from "./renderer/graph.js";
 export type {
   CrossCtxOutput,
   Service,

@@ -51,40 +51,46 @@ Output:
   Output saved to: crossctx-output.json
 ```
 
-The JSON output looks like this:
+## Output Formats
+
+### JSON (default)
+
+Always generated. Token-efficient, LLM-friendly:
 
 ```json
 {
-  "meta": {
-    "generatedAt": "2026-04-10T...",
-    "version": "0.1.0",
-    "scanPaths": ["./examples"],
-    "totalFiles": 3
-  },
-  "services": [
-    {
-      "name": "user-service",
-      "baseUrls": ["https://user-service.internal:8080"],
-      "endpointCount": 3
-    }
-  ],
-  "endpoints": [
-    {
-      "service": "user-service",
-      "method": "GET",
-      "path": "/users",
-      "summary": "List all users"
-    }
-  ],
+  "services": [...],
+  "endpoints": [...],
   "dependencies": [
-    {
-      "from": "order-service",
-      "to": "user-service",
-      "detectedVia": "description",
-      "evidence": "Referenced URL: https://user-service.internal:8080"
-    }
+    { "from": "order-service", "to": "user-service", "detectedVia": "description" }
   ]
 }
+```
+
+### Markdown (`--markdown`)
+
+LLM-optimized summary with endpoints table, dependency graph, and schema overview:
+
+```bash
+crossctx ./examples --markdown
+```
+
+Generates `crossctx-output.md` — paste it directly into an LLM prompt.
+
+### Interactive Graph (`--graph`)
+
+Browser-based D3.js dependency visualization with drag, zoom, and hover details:
+
+```bash
+crossctx ./examples --graph
+```
+
+Generates `crossctx-graph.html` — open in any browser. No server needed.
+
+### All formats at once
+
+```bash
+crossctx ./examples --markdown --graph
 ```
 
 ## CLI Options
@@ -93,13 +99,15 @@ The JSON output looks like this:
 Usage: crossctx [options] <paths...>
 
 Arguments:
-  paths              directories to scan for OpenAPI specs
+  paths                    directories to scan for OpenAPI specs
 
 Options:
-  -o, --output       output file path (default: "crossctx-output.json")
-  -q, --quiet        suppress terminal output
-  -V, --version      output the version number
-  -h, --help         display help
+  -o, --output <file>      JSON output file (default: "crossctx-output.json")
+  -m, --markdown [file]    generate Markdown output (default: "crossctx-output.md")
+  -g, --graph [file]       generate interactive HTML graph (default: "crossctx-graph.html")
+  -q, --quiet              suppress terminal output
+  -V, --version            output the version number
+  -h, --help               display help
 ```
 
 ## Why this exists
@@ -112,7 +120,6 @@ The JSON output is specifically designed for AI consumption: feed it to an LLM a
 
 ## Roadmap
 
-- **v0.2** — Markdown output, simple graph visualization
 - **v1.0** — Source code parsing (AST) for Node.js, Python, Java
 - **v2.0** — GraphQL, gRPC, message queue detection
 - **v3.0** — CI/CD integration, breaking change detection

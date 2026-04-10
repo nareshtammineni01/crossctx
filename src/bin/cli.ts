@@ -4,6 +4,8 @@ import { scanForSpecs } from "../scanner/index.js";
 import { parseSpec } from "../parser/index.js";
 import { analyzeDependencies } from "../analyzer/index.js";
 import { buildOutput, saveOutput, printSummary } from "../renderer/index.js";
+import { saveMarkdown } from "../renderer/markdown.js";
+import { saveGraph } from "../renderer/graph.js";
 import type { ParsedSpec } from "../types/index.js";
 
 const program = new Command();
@@ -13,9 +15,11 @@ program
   .description("Generate cross-service API dependency maps from OpenAPI/Swagger files")
   .version("0.1.0")
   .argument("<paths...>", "directories to scan for OpenAPI specs")
-  .option("-o, --output <file>", "output file path", "crossctx-output.json")
+  .option("-o, --output <file>", "output JSON file path", "crossctx-output.json")
+  .option("-m, --markdown [file]", "generate Markdown output (default: crossctx-output.md)")
+  .option("-g, --graph [file]", "generate interactive HTML dependency graph (default: crossctx-graph.html)")
   .option("-q, --quiet", "suppress terminal output", false)
-  .action(async (paths: string[], options: { output: string; quiet: boolean }) => {
+  .action(async (paths: string[], options: { output: string; markdown?: boolean | string; graph?: boolean | string; quiet: boolean }) => {
     try {
       const resolvedPaths = paths.map((p) => path.resolve(p));
 
@@ -77,8 +81,31 @@ program
       // Step 4: Build and save output
       const output = buildOutput(parsedSpecs, dependencies, paths, scanResults.length);
 
+      // JSON output (always)
       const outputPath = path.resolve(options.output);
       await saveOutput(output, outputPath);
+
+      // Markdown output (optional)
+      if (options.markdown !== undefined) {
+        const mdPath = typeof options.markdown === "string"
+          ? path.resolve(options.markdown)
+          : path.resolve("crossctx-output.md");
+        await saveMarkdown(output, mdPath);
+        if (!options.quiet) {
+          console.log(`  Markdown saved to: ${mdPath}`);
+        }
+      }
+
+      // Graph output (optional)
+      if (options.graph !== undefined) {
+        const graphPath = typeof options.graph === "string"
+          ? path.resolve(options.graph)
+          : path.resolve("crossctx-graph.html");
+        await saveGraph(output, graphPath);
+        if (!options.quiet) {
+          console.log(`  Graph saved to: ${graphPath}`);
+        }
+      }
 
       // Print summary
       if (!options.quiet) {
