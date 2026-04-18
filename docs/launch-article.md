@@ -1,81 +1,98 @@
-# I built a CLI to help AI understand your microservices
+# I built a CLI that maps your microservice architecture from source code
 
-If you've ever tried to explain your microservice architecture to an LLM, you know the pain. You end up manually typing out service names, endpoints, who calls what — and the LLM still gets confused.
+If you've ever tried to explain your microservice architecture to an LLM, you know the pain. You end up manually typing out service names, endpoints, who calls what — and the LLM still gets confused halfway through.
 
-I built **CrossCtx** to fix this.
+I built **CrossCtx** to fix this. And v0.2 is a much bigger leap than I expected.
 
-## The problem
+## The original problem
 
 Microservice architectures are hard for humans to reason about. They're even harder for AI. Documentation goes stale. New developers join and have no idea what calls what. And when you ask an LLM to help debug a cross-service issue, you spend more time explaining the architecture than getting actual help.
 
-## The solution
+The v0.1 answer was: scan your OpenAPI specs and build a dependency map. It worked, but it had a fundamental weakness — most teams don't keep their OpenAPI specs up to date, or don't have them at all.
 
-CrossCtx is a CLI that scans your OpenAPI/Swagger specs and generates a clean dependency map — in one command:
+## v0.2: read the source code directly
+
+The new version doesn't need OpenAPI specs. It reads your actual controllers.
 
 ```bash
-npx crossctx ./service1 ./service2 ./service3
+npx crossctx ./order-service ./payment-service ./user-service ./inventory-service -g deps.html
 ```
 
-It produces:
-
-- **JSON output** — token-efficient, structured for LLM consumption
-- **Markdown output** — paste directly into a prompt
-- **Interactive HTML graph** — D3.js visualization you can open in any browser
-
-## How it works
-
-CrossCtx follows a simple pipeline:
-
-1. **Scan** — recursively find OpenAPI/Swagger files across your repos
-2. **Parse** — extract services, endpoints, request/response schemas
-3. **Analyze** — detect inter-service dependencies by matching hostnames and URL references
-4. **Render** — output in JSON, Markdown, or interactive HTML
-
-No runtime dependencies. No AST parsing. No complex setup. Just point it at your service directories and go.
-
-## Example output
-
-Given three microservices (user, order, payment), CrossCtx finds that the order service depends on both user and payment — automatically detected from server URLs referenced in the OpenAPI specs:
-
 ```
-  Services found: 3
-    • user-service (3 endpoints) [3.0.3]
-    • order-service (3 endpoints) [3.0.3]
-    • payment-service (3 endpoints) [3.0.3]
+  [1/4] Detecting languages and scanning source code...
+  → order-service (java/spring-boot, confidence: 97%)
+  → payment-service (csharp/aspnet, confidence: 97%)
+  → user-service (python/fastapi, confidence: 95%)
+  → inventory-service (java/spring-boot, confidence: 97%)
+  Found 4 service(s), 48 endpoint(s)
 
-  Dependencies: 2
-    order-service → user-service
-    order-service → payment-service
+  [3/4] Resolving call chains...
+  Found 12 call chain(s)
 ```
 
-The JSON output is designed to be pasted directly into an LLM prompt. It's compact, structured, and gives the AI everything it needs to understand your architecture.
+Point it at project folders. It figures out the language and framework automatically, parses the controllers and routes, detects every outbound HTTP call, resolves which service it's calling, and builds the full dependency chain.
 
-## Why I built this
+## Language support
 
-I was tired of manually describing my service architecture every time I wanted AI help with cross-service debugging. I figured: the information is already in the OpenAPI specs. Why not extract it automatically?
+CrossCtx now handles four languages across six frameworks:
 
-CrossCtx started as a weekend project and turned into something I use daily. I'm open-sourcing it because I think every team working with microservices needs this.
+- **TypeScript** — NestJS decorators (`@Controller`, `@Get`, `@Body`), outbound detection via axios/fetch/HttpService
+- **Java** — Spring Boot annotations (`@RestController`, `@GetMapping`), FeignClient interfaces, RestTemplate/WebClient
+- **C#** — ASP.NET Core attributes (`[ApiController]`, `[HttpGet]`), IHttpClientFactory, Refit, RestSharp
+- **Python** — FastAPI routers, Django REST ViewSets and `@api_view`, Flask routes, httpx/requests/aiohttp
 
-## What's next
+For each endpoint it extracts the HTTP method, path, request body type with field names, and response type. For each outbound call it resolves the target service using a four-tier strategy: hostname matching → environment variable name heuristics → URL fragment matching → endpoint path matching.
 
-The current version handles OpenAPI/Swagger specs. The roadmap includes:
+## The graph got a lot better
 
-- Source code parsing (AST) for Express, FastAPI, Spring Boot
-- GraphQL and gRPC support
-- Message queue detection (Kafka, RabbitMQ)
-- CI/CD integration to detect breaking changes in PRs
-- GitHub Action
+The v0.1 graph was a basic D3.js force layout. v0.2 completely replaces it.
+
+The new graph is a three-panel layout built on Cytoscape.js:
+
+**Left sidebar** — a three-level tree: service → controller → endpoint. You can search across everything. Each controller group is collapsible with its own color and endpoint count.
+
+**Center graph** — adaptive based on what you're looking at:
+- Multiple services → nodes are services, edges are detected call chains, node size reflects endpoint count
+- Single service → nodes are controllers, so instead of one lonely bubble you see the full internal structure of the service
+
+**Right panel** — slides in when you click anything. Shows the full endpoint path, request body fields with types, response type, and the complete call chain tree you can click through.
+
+## What I learned building it
+
+**Regex over AST is a practical tradeoff.** I went back and forth on this. A full AST parser would be more accurate but adds massive complexity and language-specific dependencies. Regex with brace-depth tracking gets you 90% of the way there for standard patterns, which covers 90% of real codebases.
+
+**Brace-depth scoping was the hardest part.** The first version of the Java parser was attributing outbound calls to the wrong methods — it would find a `RestTemplate.getForEntity()` call and assign it to the first `@GetMapping` handler in the file. The fix was tracking `{` and `}` characters to find the exact line range of each method body, then filtering calls to that range. Same problem appeared in C#.
+
+**Python's `.env` files and fast-glob don't mix by default.** `fast-glob` ignores dotfiles unless you pass `dot: true`. Cost me 30 minutes.
+
+**URL resolution across languages needs a unified strategy.** JS uses `${VAR}/path`, Python f-strings use `{VAR}/path`, and Python string concat uses `VAR + "/path"`. The resolver now handles all three. Getting this right is what makes the call chain detection actually work.
 
 ## Try it
 
 ```bash
-npx crossctx ./your-services --markdown --graph
+npx crossctx ./your-services --graph
 ```
 
-GitHub: https://github.com/nareshtammineni01/crossctx
+Open the generated HTML. No server, no signup, no config.
 
-If this saves you time, drop a star. Contributions welcome.
+The repo includes example services in all four languages if you want to see it working before pointing it at your own code:
+
+```bash
+git clone https://github.com/nareshtammineni01/crossctx
+cd crossctx
+npm install && npm run build
+node dist/bin/cli.js examples/inventory-service examples/notification-service \
+  examples/analytics-service examples/email-service --graph
+```
+
+## What's next
+
+The main thing missing is a **controller view toggle** for multi-service projects — a button that switches the graph from service nodes to controller nodes across all services, color-coded by service. That would give you the full topology in one view instead of having to drill into each service separately.
+
+After that: Go and Ruby support, Kafka/RabbitMQ message queue detection, and a GitHub Action so the graph regenerates on every PR.
 
 ---
 
-*CrossCtx is MIT licensed and works with Node.js 18+.*
+GitHub: https://github.com/nareshtammineni01/crossctx
+
+MIT licensed. Node.js 18+. Contributions welcome.

@@ -1,251 +1,1070 @@
 import { writeFile } from "fs/promises";
-import type { CrossCtxOutput } from "../types/index.js";
+import type { CrossCtxOutput, CodeScanResult, CallChain, CallChainNode, SourceEndpoint, PayloadShape } from "../types/index.js";
 
-/**
- * Generate an interactive HTML dependency graph using D3.js
- * Opens in any browser — zero dependencies needed by the user
- */
+export async function saveGraph(output: CrossCtxOutput, outputPath: string): Promise<void> {
+  const html = renderGraph(output);
+  await writeFile(outputPath, html, "utf-8");
+}
+
 export function renderGraph(output: CrossCtxOutput): string {
-  const nodes = output.services.map((svc) => ({
-    id: svc.name,
-    endpoints: svc.endpointCount,
-    urls: svc.baseUrls,
-    version: svc.specVersion,
-  }));
+  const scanResults = output.codeScanResults ?? [];
+  const callChains = output.callChains ?? [];
 
-  const links = output.dependencies.map((dep) => ({
-    source: dep.from,
-    target: dep.to,
-    type: dep.detectedVia,
-    evidence: dep.evidence,
-  }));
+  // Build graph nodes and edges from code scan results
+  const services = buildServiceNodes(scanResults, output);
+  const graphEdges = buildGraphEdges(callChains, scanResults, output);
+  const endpointsData = buildEndpointsData(scanResults, output);
+
+  // Build controller groupings for sidebar + single-service graph view
+  const controllerGroups = buildControllerGroups(endpointsData);
+
+  const dataJson = JSON.stringify({ services, graphEdges, endpointsData, callChains, controllerGroups }, null, 0);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CrossCtx — Service Dependency Graph</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
-      overflow: hidden;
-    }
-    #header {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      padding: 16px 24px;
-      background: rgba(13, 17, 23, 0.9);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid #21262d;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    #header h1 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #f0f6fc;
-    }
-    #header .stats {
-      font-size: 13px;
-      color: #8b949e;
-    }
-    #header .stats span {
-      margin-left: 16px;
-      padding: 3px 10px;
-      background: #21262d;
-      border-radius: 12px;
-    }
-    #graph { width: 100vw; height: 100vh; }
-    .node circle {
-      stroke-width: 2.5px;
-      cursor: pointer;
-      transition: r 0.2s;
-    }
-    .node:hover circle { filter: brightness(1.3); }
-    .node text {
-      font-size: 12px;
-      font-weight: 600;
-      fill: #f0f6fc;
-      pointer-events: none;
-      text-anchor: middle;
-    }
-    .node .badge {
-      font-size: 10px;
-      fill: #8b949e;
-      font-weight: 400;
-    }
-    .link {
-      stroke-width: 2;
-      fill: none;
-    }
-    .link-label {
-      font-size: 10px;
-      fill: #484f58;
-    }
-    marker { fill: #484f58; }
-    #tooltip {
-      position: fixed;
-      display: none;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 13px;
-      max-width: 300px;
-      z-index: 20;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    }
-    #tooltip h3 { color: #f0f6fc; margin-bottom: 8px; font-size: 14px; }
-    #tooltip p { color: #8b949e; margin: 4px 0; }
-    #tooltip .url { color: #58a6ff; word-break: break-all; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrossCtx — API Dependency Explorer</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --bg2: #161b22;
+  --bg3: #21262d;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --text-bright: #f0f6fc;
+  --blue: #58a6ff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+  --purple: #bc8cff;
+  --pink: #f778ba;
+  --cyan: #79c0ff;
+  --sidebar-w: 280px;
+  --panel-w: 360px;
+  --header-h: 52px;
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+/* ── Header ── */
+#header {
+  height: var(--header-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+#header .logo { font-size: 16px; font-weight: 700; color: var(--text-bright); letter-spacing: -0.3px; }
+#header .logo span { color: var(--blue); }
+#header .pills { display: flex; gap: 8px; margin-left: auto; }
+.pill { padding: 3px 10px; border-radius: 20px; font-size: 12px; background: var(--bg3); color: var(--text-dim); border: 1px solid var(--border); }
+.pill strong { color: var(--text-bright); }
+
+/* ── Layout ── */
+#layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+#search-wrap { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+#search {
+  width: 100%;
+  padding: 7px 10px 7px 30px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 8px center;
+}
+#search:focus { border-color: var(--blue); }
+#service-tree { flex: 1; overflow-y: auto; padding: 8px 0; }
+.service-group { margin-bottom: 2px; }
+.service-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.1s;
+  user-select: none;
+}
+.service-header:hover { background: var(--bg3); }
+.service-header.active { background: rgba(88,166,255,0.1); }
+.svc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.svc-name { font-size: 13px; font-weight: 600; color: var(--text-bright); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-badge { font-size: 11px; color: var(--text-dim); background: var(--bg3); padding: 1px 6px; border-radius: 10px; }
+.svc-chevron { font-size: 10px; color: var(--text-dim); transition: transform 0.15s; }
+.service-header.open .svc-chevron { transform: rotate(90deg); }
+.endpoint-list { display: none; padding: 2px 0 4px; }
+.service-header.open + .endpoint-list { display: block; }
+
+/* ── Controller groups (inside service) ── */
+.ctrl-group { margin-bottom: 1px; }
+.ctrl-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 12px 4px 24px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.1s;
+  user-select: none;
+}
+.ctrl-header:hover { background: var(--bg3); }
+.ctrl-icon { font-size: 10px; color: var(--text-dim); flex-shrink: 0; width: 12px; text-align: center; }
+.ctrl-name { font-size: 12px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctrl-badge { font-size: 10px; color: var(--text-dim); background: var(--bg3); padding: 1px 5px; border-radius: 8px; border: 1px solid var(--border); }
+.ctrl-chevron { font-size: 9px; color: var(--text-dim); transition: transform 0.15s; }
+.ctrl-header.open .ctrl-chevron { transform: rotate(90deg); }
+.ctrl-ep-list { display: none; padding: 1px 0 2px; }
+.ctrl-header.open + .ctrl-ep-list { display: block; }
+
+.endpoint-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px 4px 40px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 0.1s;
+  font-size: 12px;
+}
+.endpoint-item:hover { background: var(--bg3); }
+.endpoint-item.selected { background: rgba(88,166,255,0.15); }
+.method-badge {
+  font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+  min-width: 38px; text-align: center; flex-shrink: 0;
+}
+.method-GET { background: rgba(63,185,80,0.2); color: #3fb950; }
+.method-POST { background: rgba(88,166,255,0.2); color: #58a6ff; }
+.method-PUT { background: rgba(210,153,34,0.2); color: #d29922; }
+.method-PATCH { background: rgba(188,140,255,0.2); color: #bc8cff; }
+.method-DELETE { background: rgba(248,81,73,0.2); color: #f85149; }
+.method-HEAD, .method-OPTIONS { background: var(--bg3); color: var(--text-dim); }
+.ep-path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ep-chain-icon { font-size: 10px; color: var(--blue); opacity: 0; transition: opacity 0.1s; }
+.endpoint-item:hover .ep-chain-icon { opacity: 1; }
+
+/* ── Graph ── */
+#graph-wrap { flex: 1; position: relative; overflow: hidden; }
+#cy { width: 100%; height: 100%; }
+.graph-controls {
+  position: absolute; bottom: 16px; right: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  z-index: 10;
+}
+.ctrl-btn {
+  width: 32px; height: 32px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 16px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.ctrl-btn:hover { background: var(--bg3); }
+#graph-hint {
+  position: absolute; bottom: 16px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 12px;
+  font-size: 11px; color: var(--text-dim);
+  pointer-events: none;
+  opacity: 1; transition: opacity 1s;
+}
+#graph-hint.hidden { opacity: 0; }
+
+/* ── Right Panel ── */
+#panel {
+  width: var(--panel-w);
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  transform: translateX(var(--panel-w));
+  transition: transform 0.2s ease;
+}
+#panel.open { transform: translateX(0); }
+#panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+#panel-header .method-badge { font-size: 11px; }
+#panel-title { font-size: 13px; font-weight: 600; color: var(--text-bright); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#panel-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 18px; padding: 0 2px; }
+#panel-close:hover { color: var(--text-bright); }
+#panel-body { flex: 1; overflow-y: auto; padding: 0; }
+
+.panel-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.panel-section-title { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.panel-service { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.panel-service .svc-dot { width: 8px; height: 8px; }
+.panel-service-name { font-size: 13px; color: var(--text); }
+.panel-path { font-size: 13px; font-family: monospace; color: var(--cyan); word-break: break-all; }
+.panel-summary { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.panel-source { font-size: 11px; color: var(--text-dim); margin-top: 6px; font-family: monospace; }
+
+/* Payload shapes */
+.payload-box {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px; margin-top: 4px;
+}
+.payload-type-name { font-size: 11px; color: var(--purple); margin-bottom: 6px; font-family: monospace; }
+.payload-field { display: flex; gap: 8px; margin-bottom: 3px; font-size: 12px; }
+.field-name { color: var(--cyan); font-family: monospace; }
+.field-type { color: var(--text-dim); font-family: monospace; }
+.field-req { color: var(--red); font-size: 10px; }
+.no-payload { font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+/* Call chain tree in panel */
+.chain-tree { margin-top: 4px; }
+.chain-node {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin-bottom: 6px; font-size: 12px;
+}
+.chain-node.child { padding-left: 16px; }
+.chain-node.grandchild { padding-left: 32px; }
+.chain-connector { color: var(--border); font-family: monospace; flex-shrink: 0; padding-top: 1px; }
+.chain-svc { color: var(--text-dim); }
+.chain-ep { color: var(--blue); font-family: monospace; cursor: pointer; }
+.chain-ep:hover { text-decoration: underline; }
+.chain-badge-leaf { font-size: 10px; color: var(--green); }
+.chain-badge-cycle { font-size: 10px; color: var(--orange); }
+.chain-badge-unresolved { font-size: 10px; color: var(--text-dim); }
+
+/* ── Empty state ── */
+#empty-state {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none;
+}
+#empty-state h2 { font-size: 18px; color: var(--text-dim); font-weight: 400; }
+#empty-state p { font-size: 13px; color: var(--text-dim); margin-top: 8px; opacity: 0.6; }
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ── No results ── */
+.no-results { padding: 16px; font-size: 13px; color: var(--text-dim); text-align: center; }
+</style>
 </head>
 <body>
-  <div id="header">
-    <h1>CrossCtx</h1>
-    <div class="stats">
-      <span>${nodes.length} services</span>
-      <span>${output.endpoints.length} endpoints</span>
-      <span>${links.length} dependencies</span>
-    </div>
+
+<div id="header">
+  <div class="logo">Cross<span>Ctx</span></div>
+  <div class="pills">
+    <div class="pill"><strong id="svc-count">0</strong> services</div>
+    <div class="pill"><strong id="ctrl-count">0</strong> controllers</div>
+    <div class="pill"><strong id="ep-count">0</strong> endpoints</div>
+    <div class="pill"><strong id="chain-count">0</strong> call chains</div>
+    <div class="pill"><strong id="dep-count">0</strong> dependencies</div>
   </div>
-  <svg id="graph"></svg>
-  <div id="tooltip"></div>
+</div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-  <script>
-    const nodes = ${JSON.stringify(nodes)};
-    const links = ${JSON.stringify(links)};
-    const endpoints = ${JSON.stringify(output.endpoints)};
+<div id="layout">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="search-wrap">
+      <input id="search" type="text" placeholder="Search services, endpoints..." autocomplete="off" spellcheck="false">
+    </div>
+    <div id="service-tree"></div>
+  </div>
 
-    const colors = ["#58a6ff","#3fb950","#d29922","#f78166","#bc8cff","#f778ba","#79c0ff","#56d364"];
+  <!-- Graph -->
+  <div id="graph-wrap">
+    <div id="cy"></div>
+    <div id="empty-state" style="display:none">
+      <h2>No data to display</h2>
+      <p>Run crossctx with project paths to populate the graph</p>
+    </div>
+    <div class="graph-controls">
+      <button class="ctrl-btn" id="btn-fit" title="Fit to screen">⊡</button>
+      <button class="ctrl-btn" id="btn-zoom-in" title="Zoom in">+</button>
+      <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
+    </div>
+    <div id="graph-hint">Click a service or endpoint to explore · Scroll to zoom · Drag to pan</div>
+  </div>
 
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+  <!-- Right panel -->
+  <div id="panel">
+    <div id="panel-header">
+      <span id="panel-method" class="method-badge"></span>
+      <span id="panel-title">Endpoint Details</span>
+      <button id="panel-close">×</button>
+    </div>
+    <div id="panel-body"></div>
+  </div>
+</div>
 
-    const svg = d3.select("#graph")
-      .attr("width", width)
-      .attr("height", height);
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+const DATA = ${dataJson};
+const { services, graphEdges, endpointsData, callChains, controllerGroups } = DATA;
 
-    // Arrow markers
-    svg.append("defs").selectAll("marker")
-      .data(["arrow"])
-      .enter().append("marker")
-        .attr("id", d => d)
-        .attr("viewBox", "0 -5 10 10")
-        .attr("refX", 35)
-        .attr("refY", 0)
-        .attr("markerWidth", 8)
-        .attr("markerHeight", 8)
-        .attr("orient", "auto")
-      .append("path")
-        .attr("d", "M0,-5L10,0L0,5");
+const SERVICE_COLORS = [
+  '#58a6ff','#3fb950','#d29922','#f778ba','#bc8cff',
+  '#79c0ff','#56d364','#ffa657','#ff7b72','#a5d6ff'
+];
+const CTRL_COLORS = [
+  '#58a6ff','#3fb950','#d29922','#f778ba','#bc8cff',
+  '#79c0ff','#56d364','#ffa657','#ff7b72','#a5d6ff',
+  '#e3b341','#f0883e','#d2a8ff','#7ee787','#a8daff',
+  '#ffb3c1','#c9d1d9','#ffd700','#98e2c6','#b08aff',
+  '#ff9f43','#ee5a24','#6c5ce7','#00b894','#fd79a8'
+];
+const colorMap = {};
+services.forEach((s, i) => { colorMap[s.id] = SERVICE_COLORS[i % SERVICE_COLORS.length]; });
 
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(200))
-      .force("charge", d3.forceManyBody().strength(-500))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(60));
+// Build controller color map (per-controller unique colors)
+const ctrlColorMap = {};
+let ctrlColorIdx = 0;
+if (controllerGroups) {
+  Object.keys(controllerGroups).forEach(svcId => {
+    const ctrls = controllerGroups[svcId];
+    ctrls.forEach(ctrl => {
+      ctrlColorMap[svcId + '::' + ctrl.name] = CTRL_COLORS[ctrlColorIdx++ % CTRL_COLORS.length];
+    });
+  });
+}
 
-    const g = svg.append("g");
+// Whether we're in "controller view" (single service, show controllers as graph nodes)
+const isSingleService = services.length === 1;
 
-    // Zoom
-    svg.call(d3.zoom()
-      .scaleExtent([0.3, 4])
-      .on("zoom", (event) => g.attr("transform", event.transform)));
+// ─── Stats ───────────────────────────────────────────────────────────────────
+document.getElementById('svc-count').textContent = services.length;
+document.getElementById('ep-count').textContent = endpointsData.length;
+document.getElementById('chain-count').textContent = callChains.length;
+document.getElementById('dep-count').textContent = graphEdges.length;
+const totalCtrls = controllerGroups ? Object.values(controllerGroups).reduce((s, a) => s + a.length, 0) : 0;
+document.getElementById('ctrl-count').textContent = totalCtrls;
 
-    // Links
-    const link = g.append("g").selectAll(".link")
-      .data(links)
-      .enter().append("line")
-        .attr("class", "link")
-        .attr("stroke", "#30363d")
-        .attr("marker-end", "url(#arrow)");
+// ─── Cytoscape Graph ─────────────────────────────────────────────────────────
+let cyNodes, cyEdges;
 
-    // Nodes
-    const node = g.append("g").selectAll(".node")
-      .data(nodes)
-      .enter().append("g")
-        .attr("class", "node")
-        .call(d3.drag()
-          .on("start", dragStarted)
-          .on("drag", dragged)
-          .on("end", dragEnded));
+if (isSingleService && controllerGroups && services[0]) {
+  // Single-service mode: show controllers as nodes
+  const svcId = services[0].id;
+  const ctrls = controllerGroups[svcId] || [];
+  cyNodes = ctrls.map(ctrl => ({
+    data: {
+      id: 'ctrl::' + ctrl.name,
+      label: ctrl.name.replace('Controller', ''),
+      endpointCount: ctrl.endpoints.length,
+      color: ctrlColorMap[svcId + '::' + ctrl.name],
+      nodeType: 'controller',
+      controllerName: ctrl.name,
+      serviceId: svcId,
+    }
+  }));
+  cyEdges = []; // no edges in single-service mode (all internal)
+} else {
+  // Multi-service mode: show services as nodes
+  cyNodes = services.map(s => ({
+    data: {
+      id: s.id,
+      label: s.id,
+      endpointCount: s.endpointCount,
+      color: colorMap[s.id],
+      language: s.language,
+      framework: s.framework,
+      nodeType: 'service',
+    }
+  }));
+  cyEdges = graphEdges.map((e, i) => ({
+    data: {
+      id: 'e' + i,
+      source: e.fromService,
+      target: e.toService,
+      label: e.fromEndpoint + ' → ' + e.toService,
+      confidence: e.confidence,
+    }
+  }));
+}
 
-    node.append("circle")
-      .attr("r", d => 20 + d.endpoints * 3)
-      .attr("fill", (d, i) => colors[i % colors.length])
-      .attr("opacity", 0.85)
-      .attr("stroke", (d, i) => colors[i % colors.length]);
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements: [...cyNodes, ...cyEdges],
+  style: [
+    {
+      selector: 'node',
+      style: {
+        'background-color': 'data(color)',
+        'background-opacity': 0.85,
+        'border-color': 'data(color)',
+        'border-width': 2,
+        'border-opacity': 1,
+        'label': 'data(label)',
+        'color': '#f0f6fc',
+        'font-size': 11,
+        'font-weight': 600,
+        'font-family': '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        'text-valign': 'bottom',
+        'text-halign': 'center',
+        'text-margin-y': 6,
+        'text-outline-color': '#0d1117',
+        'text-outline-width': 2,
+        'width': 'mapData(endpointCount, 1, 15, 40, 72)',
+        'height': 'mapData(endpointCount, 1, 15, 40, 72)',
+        'transition-property': 'background-opacity, border-width, width, height',
+        'transition-duration': '0.15s',
+      }
+    },
+    {
+      selector: 'node:selected, node.highlighted',
+      style: {
+        'background-opacity': 1,
+        'border-width': 3,
+        'z-index': 10,
+      }
+    },
+    {
+      selector: 'node.dimmed',
+      style: { 'background-opacity': 0.2, 'border-opacity': 0.2, 'color': '#484f58' }
+    },
+    {
+      selector: 'edge',
+      style: {
+        'width': 1.5,
+        'line-color': '#30363d',
+        'target-arrow-color': '#484f58',
+        'target-arrow-shape': 'triangle',
+        'arrow-scale': 1.2,
+        'curve-style': 'bezier',
+        'opacity': 0.7,
+      }
+    },
+    {
+      selector: 'edge.highlighted',
+      style: {
+        'line-color': '#58a6ff',
+        'target-arrow-color': '#58a6ff',
+        'width': 2.5,
+        'opacity': 1,
+        'z-index': 10,
+      }
+    },
+    {
+      selector: 'edge.dimmed',
+      style: { 'opacity': 0.1 }
+    },
+  ],
+  layout: isSingleService
+    ? { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 6000, nodeOverlap: 30, idealEdgeLength: 120, padding: 50 }
+    : { name: services.length > 1 ? 'cose' : 'grid', animate: true, animationDuration: 500, nodeRepulsion: 8000, nodeOverlap: 40, idealEdgeLength: 180, padding: 60 },
+  wheelSensitivity: 0.3,
+});
 
-    node.append("text")
-      .attr("dy", -30 - 3)
-      .text(d => d.id);
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+function buildSidebar(filter = '') {
+  const tree = document.getElementById('service-tree');
+  tree.innerHTML = '';
 
-    node.append("text")
-      .attr("class", "badge")
-      .attr("dy", -18)
-      .text(d => d.endpoints + " endpoints");
+  const filterLow = filter.toLowerCase();
+  let anyVisible = false;
 
-    // Tooltip
-    const tooltip = d3.select("#tooltip");
+  services.forEach(svc => {
+    const svcMatch = !filter || svc.id.toLowerCase().includes(filterLow);
+    const svcEndpoints = endpointsData.filter(ep => ep.service === svc.id);
 
-    node.on("mouseover", (event, d) => {
-      const eps = endpoints.filter(e => e.service === d.id);
-      let html = "<h3>" + d.id + "</h3>";
-      if (d.urls.length) html += '<p class="url">' + d.urls.join(", ") + "</p>";
-      html += "<p>Spec: " + d.version + "</p>";
-      html += "<p><strong>Endpoints:</strong></p>";
-      eps.forEach(e => {
-        html += "<p>" + e.method + " " + e.path + (e.summary ? " — " + e.summary : "") + "</p>";
-      });
-      tooltip.html(html)
-        .style("display", "block")
-        .style("left", (event.clientX + 15) + "px")
-        .style("top", (event.clientY + 15) + "px");
-    })
-    .on("mouseout", () => tooltip.style("display", "none"));
+    // Get controllers for this service
+    const ctrls = (controllerGroups && controllerGroups[svc.id]) || [];
 
-    simulation.on("tick", () => {
-      link
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y);
-      node.attr("transform", d => "translate(" + d.x + "," + d.y + ")");
+    // Filter endpoints
+    const visibleEps = filter
+      ? svcEndpoints.filter(ep =>
+          ep.path.toLowerCase().includes(filterLow) ||
+          ep.method.toLowerCase().includes(filterLow) ||
+          (ep.summary || '').toLowerCase().includes(filterLow) ||
+          (ep.controller || '').toLowerCase().includes(filterLow) ||
+          svc.id.toLowerCase().includes(filterLow)
+        )
+      : svcEndpoints;
+
+    if (!svcMatch && visibleEps.length === 0) return;
+    anyVisible = true;
+
+    const group = document.createElement('div');
+    group.className = 'service-group';
+    group.dataset.svc = svc.id;
+
+    // Service header
+    const header = document.createElement('div');
+    header.className = 'service-header' + (filter || services.length === 1 ? ' open' : '');
+    header.innerHTML = \`
+      <div class="svc-dot" style="background:\${colorMap[svc.id]}"></div>
+      <span class="svc-name">\${svc.id}</span>
+      <span class="svc-badge">\${visibleEps.length}</span>
+      <span class="svc-chevron">▶</span>
+    \`;
+    header.addEventListener('click', () => {
+      header.classList.toggle('open');
+      if (!isSingleService) highlightService(svc.id);
     });
 
-    function dragStarted(event) {
-      if (!event.active) simulation.alphaTarget(0.3).restart();
-      event.subject.fx = event.subject.x;
-      event.subject.fy = event.subject.y;
+    // Endpoint list container (holds controller sub-groups)
+    const epList = document.createElement('div');
+    epList.className = 'endpoint-list';
+
+    if (ctrls.length > 0) {
+      // Build controller sub-groups
+      ctrls.forEach(ctrl => {
+        const ctrlEps = visibleEps.filter(ep => ep.controller === ctrl.name);
+        if (ctrlEps.length === 0 && filter) return;
+
+        const allCtrlEps = filter ? ctrlEps : ctrl.endpoints.map(id => endpointsData.find(e => e.id === id)).filter(Boolean);
+        const displayEps = filter ? ctrlEps : allCtrlEps;
+        if (displayEps.length === 0) return;
+
+        const ctrlKey = svc.id + '::' + ctrl.name;
+        const ctrlColor = ctrlColorMap[ctrlKey] || '#58a6ff';
+
+        const ctrlGroup = document.createElement('div');
+        ctrlGroup.className = 'ctrl-group';
+
+        const ctrlHeader = document.createElement('div');
+        ctrlHeader.className = 'ctrl-header' + (filter ? ' open' : '');
+        ctrlHeader.innerHTML = \`
+          <div class="svc-dot" style="background:\${ctrlColor}; width:8px; height:8px; flex-shrink:0"></div>
+          <span class="ctrl-name">\${ctrl.name.replace('Controller', '')}</span>
+          <span class="ctrl-badge">\${displayEps.length}</span>
+          <span class="ctrl-chevron">▶</span>
+        \`;
+        ctrlHeader.addEventListener('click', (e) => {
+          e.stopPropagation();
+          ctrlHeader.classList.toggle('open');
+          // Highlight this controller's node on graph (single-service mode)
+          if (isSingleService) {
+            const nodeId = 'ctrl::' + ctrl.name;
+            const node = cy.$('#' + CSS.escape(nodeId));
+            if (node.length) {
+              cy.elements().removeClass('highlighted dimmed');
+              cy.elements().not(node).addClass('dimmed');
+              node.addClass('highlighted');
+              cy.animate({ center: { eles: node }, zoom: cy.zoom(), duration: 200 });
+            }
+          }
+        });
+
+        const ctrlEpList = document.createElement('div');
+        ctrlEpList.className = 'ctrl-ep-list';
+
+        displayEps.forEach(ep => {
+          if (!ep) return;
+          const item = document.createElement('div');
+          item.className = 'endpoint-item';
+          item.dataset.epId = ep.id;
+          item.innerHTML = \`
+            <span class="method-badge method-\${ep.method}">\${ep.method}</span>
+            <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
+            \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+          \`;
+          item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
+          ctrlEpList.appendChild(item);
+        });
+
+        ctrlGroup.appendChild(ctrlHeader);
+        ctrlGroup.appendChild(ctrlEpList);
+        epList.appendChild(ctrlGroup);
+      });
+    } else {
+      // No controller info — flat list fallback
+      visibleEps.forEach(ep => {
+        const item = document.createElement('div');
+        item.className = 'endpoint-item';
+        item.dataset.epId = ep.id;
+        item.style.paddingLeft = '30px';
+        item.innerHTML = \`
+          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
+          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
+          \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+        \`;
+        item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
+        epList.appendChild(item);
+      });
     }
-    function dragged(event) {
-      event.subject.fx = event.x;
-      event.subject.fy = event.y;
+
+    group.appendChild(header);
+    group.appendChild(epList);
+    tree.appendChild(group);
+  });
+
+  if (!anyVisible) {
+    tree.innerHTML = '<div class="no-results">No results for "' + filter + '"</div>';
+  }
+}
+
+buildSidebar();
+
+document.getElementById('search').addEventListener('input', (e) => {
+  buildSidebar(e.target.value);
+});
+
+// ─── Highlight helpers ────────────────────────────────────────────────────────
+function resetGraph() {
+  cy.elements().removeClass('highlighted dimmed');
+}
+
+function highlightService(svcId) {
+  resetGraph();
+  const node = cy.$('#' + CSS.escape(svcId));
+  if (!node.length) return;
+
+  const connected = node.neighborhood().union(node);
+  cy.elements().not(connected).addClass('dimmed');
+  connected.addClass('highlighted');
+  cy.animate({ fit: { eles: connected, padding: 80 }, duration: 300 });
+}
+
+function highlightChain(chainEdges) {
+  resetGraph();
+  if (!chainEdges || chainEdges.length === 0) return;
+
+  const involvedIds = new Set();
+  chainEdges.forEach(e => { involvedIds.add(e.fromService); involvedIds.add(e.toService); });
+
+  cy.elements().forEach(el => {
+    if (el.isNode()) {
+      if (involvedIds.has(el.id())) el.addClass('highlighted');
+      else el.addClass('dimmed');
     }
-    function dragEnded(event) {
-      if (!event.active) simulation.alphaTarget(0);
-      event.subject.fx = null;
-      event.subject.fy = null;
+    if (el.isEdge()) {
+      const src = el.data('source'), tgt = el.data('target');
+      const isInChain = chainEdges.some(e => e.fromService === src && e.toService === tgt);
+      if (isInChain) el.addClass('highlighted');
+      else el.addClass('dimmed');
     }
-  </script>
+  });
+
+  const highlighted = cy.$('.highlighted');
+  if (highlighted.length) cy.animate({ fit: { eles: highlighted, padding: 80 }, duration: 300 });
+}
+
+// ─── Panel ────────────────────────────────────────────────────────────────────
+const panel = document.getElementById('panel');
+const panelBody = document.getElementById('panel-body');
+const panelTitle = document.getElementById('panel-title');
+const panelMethod = document.getElementById('panel-method');
+
+function openPanel(content, title, method) {
+  panelTitle.textContent = title;
+  panelMethod.textContent = method || '';
+  panelMethod.className = 'method-badge method-' + (method || '');
+  if (!method) panelMethod.style.display = 'none';
+  else panelMethod.style.display = '';
+  panelBody.innerHTML = content;
+  panel.classList.add('open');
+}
+
+function closePanel() {
+  panel.classList.remove('open');
+  resetGraph();
+  document.querySelectorAll('.endpoint-item.selected').forEach(el => el.classList.remove('selected'));
+}
+
+document.getElementById('panel-close').addEventListener('click', closePanel);
+
+// ─── Endpoint selection ───────────────────────────────────────────────────────
+function selectEndpoint(ep) {
+  // Deselect previous
+  document.querySelectorAll('.endpoint-item.selected').forEach(el => el.classList.remove('selected'));
+  const el = document.querySelector(\`[data-ep-id="\${ep.id}"]\`);
+  if (el) el.classList.add('selected');
+
+  // Build panel content
+  const color = colorMap[ep.service] || '#58a6ff';
+  const svcDot = \`<div class="svc-dot" style="background:\${color}"></div>\`;
+  let html = '';
+
+  // Service info
+  html += \`<div class="panel-section">
+    <div class="panel-section-title">Service</div>
+    <div class="panel-service">\${svcDot}<span class="panel-service-name">\${ep.service}</span></div>
+    <div class="panel-path">\${ep.fullPath || ep.path}</div>
+    \${ep.summary ? \`<div class="panel-summary">\${ep.summary}</div>\` : ''}
+    \${ep.sourceFile ? \`<div class="panel-source">\${ep.sourceFile.split('/').slice(-2).join('/')}\${ep.line ? ':' + ep.line : ''}</div>\` : ''}
+  </div>\`;
+
+  // Request body
+  html += \`<div class="panel-section">
+    <div class="panel-section-title">Request Body</div>
+    \${renderPayload(ep.requestBody)}
+  </div>\`;
+
+  // Response
+  html += \`<div class="panel-section">
+    <div class="panel-section-title">Response</div>
+    \${renderPayload(ep.response)}
+  </div>\`;
+
+  // Call chain
+  const chains = callChains.filter(c => c.rootService === ep.service && c.rootEndpoint === ep.method + ' ' + (ep.fullPath || ep.path));
+  if (chains.length > 0) {
+    html += \`<div class="panel-section">
+      <div class="panel-section-title">Call Chain</div>
+      <div class="chain-tree">\${renderChainNode(chains[0].tree, 0)}</div>
+    </div>\`;
+    highlightChain(chains[0].edges);
+  } else {
+    // Highlight service on graph
+    highlightService(ep.service);
+  }
+
+  openPanel(html, ep.fullPath || ep.path, ep.method);
+}
+
+function renderPayload(payload) {
+  if (!payload) return '<div class="no-payload">Not documented</div>';
+  const fields = payload.fields || [];
+  if (fields.length === 0 && !payload.typeName) return '<div class="no-payload">Not documented</div>';
+
+  let html = '<div class="payload-box">';
+  if (payload.typeName) html += \`<div class="payload-type-name">\${payload.typeName}</div>\`;
+  if (fields.length === 0) {
+    html += '<div class="no-payload" style="margin:0">Fields unknown</div>';
+  } else {
+    fields.forEach(f => {
+      html += \`<div class="payload-field">
+        <span class="field-name">\${f.name}</span>
+        <span class="field-type">\${f.type}</span>
+        \${f.required ? '<span class="field-req">*</span>' : ''}
+      </div>\`;
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderChainNode(node, depth) {
+  const indent = depth === 0 ? '' : depth === 1 ? 'child' : 'grandchild';
+  const connector = depth === 0 ? '' : depth === 1 ? '└─ ' : '   └─ ';
+  const leafBadge = node.isLeaf && !node.isUnresolved ? '<span class="chain-badge-leaf">● end</span>' : '';
+  const cycleBadge = node.isCycle ? '<span class="chain-badge-cycle">↺ cycle</span>' : '';
+  const unresBadge = node.isUnresolved ? '<span class="chain-badge-unresolved">? unresolved</span>' : '';
+
+  let html = \`<div class="chain-node \${indent}">
+    \${depth > 0 ? \`<span class="chain-connector">\${connector}</span>\` : ''}
+    <div>
+      <span class="chain-svc">\${node.service} · </span>
+      <span class="chain-ep" onclick="selectByLabel('\${node.service}', '\${node.endpoint}')">\${node.endpoint}</span>
+      \${leafBadge}\${cycleBadge}\${unresBadge}
+    </div>
+  </div>\`;
+
+  if (node.calls && node.calls.length > 0) {
+    node.calls.forEach(child => { html += renderChainNode(child, depth + 1); });
+  }
+
+  return html;
+}
+
+function selectByLabel(service, endpointLabel) {
+  const [method, ...pathParts] = endpointLabel.split(' ');
+  const path = pathParts.join(' ');
+  const ep = endpointsData.find(e => e.service === service && e.method === method && (e.fullPath === path || e.path === path));
+  if (ep) selectEndpoint(ep);
+}
+
+// ─── Graph node click ─────────────────────────────────────────────────────────
+cy.on('tap', 'node', function(evt) {
+  const nodeId = evt.target.id();
+  const nodeData = evt.target.data();
+
+  if (nodeData.nodeType === 'controller') {
+    // Controller node clicked (single-service view)
+    const ctrlName = nodeData.controllerName;
+    const svcId = nodeData.serviceId;
+    const color = nodeData.color;
+    const ctrlEndpoints = endpointsData.filter(ep => ep.service === svcId && ep.controller === ctrlName);
+
+    // Highlight just this node
+    cy.elements().removeClass('highlighted dimmed');
+    cy.elements().not(evt.target).addClass('dimmed');
+    evt.target.addClass('highlighted');
+
+    // Expand this controller in sidebar
+    const ctrlHeaders = document.querySelectorAll('.ctrl-header');
+    ctrlHeaders.forEach(ch => {
+      const badge = ch.querySelector('.ctrl-name');
+      if (badge && badge.textContent === ctrlName.replace('Controller', '')) {
+        ch.classList.add('open');
+        // Scroll into view
+        ch.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+
+    let html = \`<div class="panel-section">
+      <div class="panel-section-title">Controller</div>
+      <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${ctrlName}</span></div>
+      <div class="panel-summary" style="margin-top:4px">\${svcId} · \${ctrlEndpoints.length} endpoints</div>
+    </div>\`;
+
+    html += \`<div class="panel-section">
+      <div class="panel-section-title">Endpoints (\${ctrlEndpoints.length})</div>\`;
+    ctrlEndpoints.forEach(ep => {
+      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
+        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
+        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
+      </div>\`;
+    });
+    html += '</div>';
+
+    openPanel(html, ctrlName, '');
+    return;
+  }
+
+  // Service node clicked (multi-service view)
+  const svcId = nodeId;
+  const svc = services.find(s => s.id === svcId);
+  if (!svc) return;
+
+  highlightService(svcId);
+
+  const color = colorMap[svcId];
+  const svcEndpoints = endpointsData.filter(ep => ep.service === svcId);
+
+  let html = \`<div class="panel-section">
+    <div class="panel-section-title">Service</div>
+    <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${svcId}</span></div>
+    <div class="panel-summary">\${svc.language} · \${svc.framework}</div>
+  </div>\`;
+
+  // Group by controller in the panel too
+  const ctrls = (controllerGroups && controllerGroups[svcId]) || [];
+  if (ctrls.length > 0) {
+    ctrls.forEach(ctrl => {
+      const ctrlEps = svcEndpoints.filter(ep => ep.controller === ctrl.name);
+      if (ctrlEps.length === 0) return;
+      html += \`<div class="panel-section">
+        <div class="panel-section-title">\${ctrl.name} (\${ctrlEps.length})</div>\`;
+      ctrlEps.forEach(ep => {
+        html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
+          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
+          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
+        </div>\`;
+      });
+      html += '</div>';
+    });
+  } else {
+    html += \`<div class="panel-section">
+      <div class="panel-section-title">Endpoints (\${svcEndpoints.length})</div>\`;
+    svcEndpoints.forEach(ep => {
+      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
+        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
+        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
+      </div>\`;
+    });
+    html += '</div>';
+  }
+
+  openPanel(html, svcId, '');
+});
+
+cy.on('tap', function(evt) {
+  if (evt.target === cy) { closePanel(); resetGraph(); }
+});
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-fit').addEventListener('click', () => cy.fit(undefined, 60));
+document.getElementById('btn-zoom-in').addEventListener('click', () => cy.zoom(cy.zoom() * 1.3));
+document.getElementById('btn-zoom-out').addEventListener('click', () => cy.zoom(cy.zoom() * 0.77));
+
+// Hide hint after 4s
+setTimeout(() => document.getElementById('graph-hint').classList.add('hidden'), 4000);
+
+// Empty state
+if (services.length === 0) document.getElementById('empty-state').style.display = 'block';
+</script>
 </body>
 </html>`;
 }
 
-/**
- * Save HTML graph to file
- */
-export async function saveGraph(output: CrossCtxOutput, outputPath: string): Promise<void> {
-  const html = renderGraph(output);
-  await writeFile(outputPath, html, "utf-8");
+// ─── Data builders ────────────────────────────────────────────────────────────
+
+// ─── Controller group builder ────────────────────────────────────────────────
+
+function deriveControllerName(sourceFile: string | undefined): string {
+  if (!sourceFile) return "Other";
+  // Match ClassName.java / ClassName.ts / ClassName.cs / ClassName.py
+  const m = sourceFile.match(/([A-Za-z0-9_]+)(?:Controller|Router|Views?|Resource)[\w]*\.(java|ts|cs|py|kt)$/i);
+  if (m) return m[1] + "Controller";
+  // Fallback: just use the filename without extension
+  const base = sourceFile.replace(/\\/g, "/").split("/").pop() ?? "Other";
+  return base.replace(/\.\w+$/, "");
+}
+
+function buildControllerGroups(endpointsData: ReturnType<typeof buildEndpointsData>) {
+  // Map: serviceId → Array<{ name: string, endpoints: string[] }>
+  const result: Record<string, Array<{ name: string; endpoints: string[] }>> = {};
+
+  for (const ep of endpointsData) {
+    const svc = ep.service;
+    if (!result[svc]) result[svc] = [];
+
+    const ctrlName = (ep as { controller?: string }).controller || "Other";
+    let ctrl = result[svc].find(c => c.name === ctrlName);
+    if (!ctrl) {
+      ctrl = { name: ctrlName, endpoints: [] };
+      result[svc].push(ctrl);
+    }
+    ctrl.endpoints.push(ep.id);
+  }
+
+  // Sort controllers alphabetically per service
+  for (const svc of Object.keys(result)) {
+    result[svc].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return result;
+}
+
+function buildServiceNodes(scanResults: CodeScanResult[], output: CrossCtxOutput) {
+  // Prefer code scan results; fall back to OpenAPI services
+  if (scanResults.length > 0) {
+    return scanResults.map((r) => ({
+      id: r.serviceName,
+      endpointCount: r.endpoints.length,
+      language: r.language.language,
+      framework: r.language.framework,
+    }));
+  }
+
+  return output.services.map((s) => ({
+    id: s.name,
+    endpointCount: s.endpointCount,
+    language: "unknown",
+    framework: "unknown",
+  }));
+}
+
+function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[], output: CrossCtxOutput) {
+  const seen = new Set<string>();
+  const edges: Array<{
+    fromService: string;
+    toService: string;
+    fromEndpoint: string;
+    confidence: number;
+  }> = [];
+
+  // From call chains
+  for (const chain of callChains) {
+    for (const edge of chain.edges) {
+      const key = `${edge.fromService}→${edge.toService}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        edges.push({
+          fromService: edge.fromService,
+          toService: edge.toService,
+          fromEndpoint: edge.from.split(":")[1] ?? "",
+          confidence: edge.confidence,
+        });
+      }
+    }
+  }
+
+  // From legacy OpenAPI dependencies
+  for (const dep of output.dependencies) {
+    const key = `${dep.from}→${dep.to}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      edges.push({
+        fromService: dep.from,
+        toService: dep.to,
+        fromEndpoint: dep.evidence,
+        confidence: 0.5,
+      });
+    }
+  }
+
+  return edges;
+}
+
+function buildEndpointsData(scanResults: CodeScanResult[], output: CrossCtxOutput) {
+  if (scanResults.length > 0) {
+    let idx = 0;
+    return scanResults.flatMap((r) =>
+      r.endpoints.map((ep) => ({
+        id: `ep${idx++}`,
+        service: r.serviceName,
+        method: ep.method,
+        path: ep.path,
+        fullPath: ep.fullPath,
+        summary: ep.summary,
+        sourceFile: ep.sourceFile,
+        line: ep.line,
+        controller: deriveControllerName(ep.sourceFile),
+        requestBody: serializePayload(ep.requestBody),
+        response: serializePayload(ep.response),
+        hasChain: ep.outboundCalls.length > 0,
+      }))
+    );
+  }
+
+  // Fall back to OpenAPI endpoints
+  return output.endpoints.map((ep, i) => ({
+    id: `ep${i}`,
+    service: ep.service,
+    method: ep.method,
+    path: ep.path,
+    fullPath: ep.path,
+    summary: ep.summary,
+    sourceFile: undefined,
+    line: undefined,
+    requestBody: ep.requestBody
+      ? {
+          typeName: undefined,
+          fields: Object.entries(ep.requestBody.properties ?? {}).map(([name, type]) => ({
+            name,
+            type,
+            required: true,
+          })),
+          source: "openapi",
+        }
+      : null,
+    response: ep.response
+      ? {
+          typeName: undefined,
+          fields: Object.entries(ep.response.properties ?? {}).map(([name, type]) => ({
+            name,
+            type,
+            required: false,
+          })),
+          source: "openapi",
+        }
+      : null,
+    hasChain: false,
+  }));
+}
+
+function serializePayload(payload: import("../types/index.js").PayloadShape | undefined) {
+  if (!payload) return null;
+  return {
+    typeName: payload.typeName,
+    fields: payload.fields,
+    source: payload.source,
+  };
 }

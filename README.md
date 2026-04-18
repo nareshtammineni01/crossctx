@@ -1,10 +1,8 @@
 # CrossCtx
 
-Generate a cross-service API dependency map from your OpenAPI/Swagger files — in one command.
+Generate a cross-service API dependency map from your microservice source code — in one command.
 
-## What it does
-
-CrossCtx scans your repositories for OpenAPI specs and produces a clean JSON map of your services, their endpoints, and how they depend on each other. The output is designed to be token-efficient and directly usable in LLM prompts.
+CrossCtx scans your project folders directly, detects the language and framework automatically, extracts controllers, endpoints, request/response payload shapes, and maps how services call each other. The output is a self-contained interactive HTML graph plus JSON and Markdown for LLM consumption.
 
 ## Quick Start
 
@@ -12,7 +10,7 @@ CrossCtx scans your repositories for OpenAPI specs and produces a clean JSON map
 npx crossctx ./service1 ./service2 ./service3
 ```
 
-That's it. You get a `crossctx-output.json` with everything mapped.
+You get `crossctx-output.json`, `crossctx-output.md`, and `crossctx-graph.html` — no config required.
 
 ## Installation
 
@@ -22,108 +20,173 @@ npm install -g crossctx
 
 Or use directly with npx — no install needed.
 
+## What it does
+
+CrossCtx follows a four-phase pipeline:
+
+1. **Detect** — identifies the language and framework for each project folder (TypeScript/NestJS, Java/Spring Boot, C#/ASP.NET, Python/FastAPI, Django, Flask)
+2. **Parse** — extracts controllers, endpoints, HTTP method, path, request body type, response type, and outbound HTTP calls by reading source code directly — no OpenAPI spec required
+3. **Resolve** — maps outbound calls to their target services using environment variable names, hostnames, URL fragments, and FeignClient annotations
+4. **Render** — produces JSON, Markdown, and a self-contained interactive HTML graph
+
+## Language Support
+
+| Language | Frameworks | Inbound | Outbound | DTOs |
+|---|---|---|---|---|
+| TypeScript | NestJS, Express | ✅ | axios, fetch, HttpService, got | class-validator, Swagger decorators |
+| Java | Spring Boot | ✅ | RestTemplate, WebClient, FeignClient | POJO classes, records, Kotlin data classes |
+| C# | ASP.NET Core | ✅ | HttpClient, IHttpClientFactory, Refit, RestSharp | classes, positional records |
+| Python | FastAPI, Django REST, Flask | ✅ | httpx, requests, aiohttp | Pydantic BaseModel, DRF Serializer, dataclass |
+
+OpenAPI/Swagger specs are also scanned when present and used to enrich the output.
+
 ## Example
 
-Given three services with OpenAPI specs:
-
 ```bash
-crossctx ./examples
+crossctx ./order-service ./payment-service ./user-service ./inventory-service -g deps.html
 ```
 
-Output:
+```
+  CrossCtx v0.2.0
+
+  [1/4] Detecting languages and scanning source code...
+  → order-service (java/spring-boot, confidence: 97%)
+  → payment-service (csharp/aspnet, confidence: 97%)
+  → user-service (python/fastapi, confidence: 95%)
+  → inventory-service (java/spring-boot, confidence: 97%)
+  Found 4 service(s), 48 endpoint(s)
+
+  [2/4] Scanning for OpenAPI/Swagger specs...
+  Found 2 OpenAPI spec(s)
+
+  [3/4] Resolving call chains...
+  Found 12 call chain(s)
+
+  [4/4] Building output...
+  Graph saved to: deps.html
+```
+
+## Interactive HTML Graph
+
+The `--graph` output is a single self-contained HTML file — open it in any browser, no server needed.
+
+**Multi-service projects** show services as nodes with edges representing detected cross-service calls. Node size reflects endpoint count. Clicking a node opens a detail panel.
+
+**Single-service projects** show controllers as nodes — each controller in your codebase becomes its own bubble, sized by its endpoint count, so you can see the shape of the service at a glance.
+
+The left sidebar organizes everything as a three-level tree:
 
 ```
-╔══════════════════════════════════════════╗
-║           CrossCtx Results               ║
-╚══════════════════════════════════════════╝
-
-  Services found: 3
-    • user-service (3 endpoints) [3.0.3]
-    • order-service (3 endpoints) [3.0.3]
-    • payment-service (3 endpoints) [3.0.3]
-
-  Total endpoints: 9
-
-  Dependencies: 2
-    order-service → user-service (description)
-    order-service → payment-service (description)
-
-  Output saved to: crossctx-output.json
+▼ order-service                    [24]
+  ▶ ● OrderController               [8]
+  ▶ ● OrderItemController           [6]
+  ▶ ● OrderStatusController         [5]
+  ▶ ● ShippingController            [5]
 ```
+
+Expand a controller to see its endpoints. Click any endpoint to open the detail panel on the right, which shows the full path, request body fields, response type, and call chain tree.
 
 ## Output Formats
 
-### JSON (default)
+### JSON (`-o`)
 
-Always generated. Token-efficient, LLM-friendly:
+Always generated. Structured for LLM consumption:
 
 ```json
 {
-  "services": [...],
-  "endpoints": [...],
-  "dependencies": [
-    { "from": "order-service", "to": "user-service", "detectedVia": "description" }
-  ]
+  "codeScanResults": [
+    {
+      "serviceName": "order-service",
+      "language": { "language": "java", "framework": "spring-boot" },
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/orders",
+          "requestBody": { "typeName": "CreateOrderRequest", "fields": [...] },
+          "outboundCalls": [...]
+        }
+      ]
+    }
+  ],
+  "callChains": [...]
 }
 ```
 
 ### Markdown (`--markdown`)
 
-LLM-optimized summary with endpoints table, dependency graph, and schema overview:
+LLM-optimized summary — paste directly into a prompt:
 
 ```bash
-crossctx ./examples --markdown
+crossctx ./services --markdown
 ```
-
-Generates `crossctx-output.md` — paste it directly into an LLM prompt.
 
 ### Interactive Graph (`--graph`)
 
-Browser-based D3.js dependency visualization with drag, zoom, and hover details:
-
 ```bash
-crossctx ./examples --graph
+crossctx ./services --graph
+crossctx ./services --graph custom-name.html
 ```
-
-Generates `crossctx-graph.html` — open in any browser. No server needed.
 
 ### All formats at once
 
 ```bash
-crossctx ./examples --markdown --graph
+crossctx ./services --markdown --graph
 ```
 
-## CLI Options
+## CLI Reference
 
 ```
 Usage: crossctx [options] <paths...>
 
 Arguments:
-  paths                    directories to scan for OpenAPI specs
+  paths                    project directories to scan (one per microservice)
 
 Options:
   -o, --output <file>      JSON output file (default: "crossctx-output.json")
   -m, --markdown [file]    generate Markdown output (default: "crossctx-output.md")
   -g, --graph [file]       generate interactive HTML graph (default: "crossctx-graph.html")
   -q, --quiet              suppress terminal output
+  --openapi-only           only scan OpenAPI/Swagger specs, skip source code (legacy mode)
   -V, --version            output the version number
   -h, --help               display help
 ```
 
+## Examples directory
+
+The repo ships with seven example microservices covering all supported languages:
+
+| Service | Language | Framework |
+|---|---|---|
+| `examples/order-service` | — | OpenAPI spec only |
+| `examples/payment-service` | — | OpenAPI spec only |
+| `examples/user-service` | — | OpenAPI spec only |
+| `examples/inventory-service` | Java | Spring Boot |
+| `examples/notification-service` | C# | ASP.NET Core |
+| `examples/analytics-service` | Python | FastAPI |
+| `examples/email-service` | Python | Django REST |
+
+Run all seven at once:
+
+```bash
+crossctx examples/order-service examples/payment-service examples/user-service \
+  examples/inventory-service examples/notification-service \
+  examples/analytics-service examples/email-service \
+  --graph
+```
+
 ## Why this exists
 
-Microservice architectures are hard to reason about. Documentation gets stale. New developers join and have no idea what calls what.
+Microservice architectures are hard to reason about. Documentation goes stale. New developers spend their first weeks just figuring out what calls what. And when you ask an LLM to help debug a cross-service issue, you spend more time explaining the architecture than getting actual help.
 
-CrossCtx gives you a single source of truth — generated directly from your OpenAPI specs. No manual maintenance. No stale diagrams.
-
-The JSON output is specifically designed for AI consumption: feed it to an LLM and it instantly understands your architecture.
+CrossCtx generates a single source of truth from the source code itself — controllers, endpoints, payload shapes, and call chains — so both humans and AI can understand your architecture instantly.
 
 ## Roadmap
 
-- **v1.0** — Source code parsing (AST) for Node.js, Python, Java
-- **v2.0** — GraphQL, gRPC, message queue detection
-- **v3.0** — CI/CD integration, breaking change detection
-- **v4.0** — Interactive web UI, plugin system
+- **v0.3** — Controller view toggle in graph (multi-service), call chain highlighting
+- **v1.0** — Go and Ruby parser support, GraphQL detection
+- **v2.0** — Kafka/RabbitMQ message queue mapping, async call chains
+- **v3.0** — CI/CD integration, breaking change detection in PRs
+- **v4.0** — GitHub Action, web UI
 
 ## Contributing
 
@@ -132,7 +195,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ## License
 
 [MIT](LICENSE)
-
-## Support
-
-If this tool saves you time, give it a star on GitHub.
