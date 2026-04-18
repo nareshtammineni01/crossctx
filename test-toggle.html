@@ -173,6 +173,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 }
 #graph-hint.hidden { opacity: 0; }
 
+/* ── Confidence Legend ── */
+#confidence-legend {
+  position: absolute; bottom: 16px; left: 16px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px;
+  font-size: 11px; color: var(--text-dim);
+  pointer-events: none;
+  display: none;
+  z-index: 5;
+}
+#confidence-legend.visible { display: block; }
+.conf-item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.conf-item:last-child { margin-bottom: 0; }
+.conf-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.conf-dot.high { background: #3fb950; }
+.conf-dot.med { background: #d29922; }
+.conf-dot.low { background: #f85149; }
+
 /* ── Right Panel ── */
 #panel {
   width: var(--panel-w);
@@ -196,7 +214,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 #panel-title { font-size: 13px; font-weight: 600; color: var(--text-bright); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #panel-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 18px; padding: 0 2px; }
 #panel-close:hover { color: var(--text-bright); }
-#panel-body { flex: 1; overflow-y: auto; padding: 0; }
+#panel-body { flex: 1; overflow-y: auto; padding: 0; min-height: 0; }
 
 .panel-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
 .panel-section-title { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
@@ -234,6 +252,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 .chain-badge-leaf { font-size: 10px; color: var(--green); }
 .chain-badge-cycle { font-size: 10px; color: var(--orange); }
 .chain-badge-unresolved { font-size: 10px; color: var(--text-dim); }
+.chain-play-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--blue); font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-family: inherit; }
+.chain-play-btn:hover { background: rgba(88,166,255,0.15); }
 
 /* ── Empty state ── */
 #empty-state {
@@ -252,6 +272,61 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 
 /* ── No results ── */
 .no-results { padding: 16px; font-size: 13px; color: var(--text-dim); text-align: center; }
+
+/* ── Context Builder ── */
+#context-builder {
+  border-top: 2px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+#ctx-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px 8px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+}
+#ctx-header:hover { background: var(--bg3); }
+#ctx-header-icon { font-size: 14px; }
+#ctx-header-label { font-size: 12px; font-weight: 600; color: var(--text-bright); flex: 1; }
+#ctx-header-chevron { font-size: 10px; color: var(--text-dim); transition: transform 0.15s; }
+#ctx-header.open #ctx-header-chevron { transform: rotate(180deg); }
+#ctx-body { display: none; padding: 10px 16px 14px; }
+#ctx-header.open + #ctx-body { display: block; }
+
+/* Purpose pills */
+.ctx-purpose-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.ctx-purpose-btn {
+  padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--bg3); color: var(--text-dim);
+  cursor: pointer; font-family: inherit; transition: all 0.12s;
+}
+.ctx-purpose-btn:hover { border-color: var(--blue); color: var(--text); }
+.ctx-purpose-btn.active { background: rgba(88,166,255,0.15); border-color: var(--blue); color: var(--blue); }
+
+/* Context text area */
+#ctx-text-wrap { position: relative; margin-bottom: 10px; }
+#ctx-text {
+  width: 100%; min-height: 140px; max-height: 260px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 11px; font-family: 'SF Mono', 'Fira Code', monospace;
+  padding: 10px 12px; resize: vertical; outline: none;
+  line-height: 1.55; white-space: pre-wrap; overflow-y: auto;
+  display: block;
+}
+/* Copy button */
+#ctx-copy-btn {
+  width: 100%; padding: 9px 0; border-radius: 6px;
+  background: var(--blue); color: #0d1117;
+  border: none; font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+#ctx-copy-btn:hover { background: #79c0ff; }
+#ctx-copy-btn:active { transform: scale(0.98); }
+#ctx-copy-btn.copied { background: var(--green); }
+#ctx-copy-icon { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -293,6 +368,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
       <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
     </div>
     <div id="graph-hint">Click a service or endpoint to explore · Scroll to zoom · Drag to pan</div>
+    <div id="confidence-legend">
+      <div class="conf-item"><span class="conf-dot high"></span>High confidence (≥90%)</div>
+      <div class="conf-item"><span class="conf-dot med"></span>Medium (70–89%)</div>
+      <div class="conf-item"><span class="conf-dot low"></span>Low (&lt;70%)</div>
+    </div>
   </div>
 
   <!-- Right panel -->
@@ -303,13 +383,36 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
       <button id="panel-close">×</button>
     </div>
     <div id="panel-body"></div>
+
+    <!-- Context Builder -->
+    <div id="context-builder" style="display:none">
+      <div id="ctx-header">
+        <span id="ctx-header-icon">🤖</span>
+        <span id="ctx-header-label">AI Context Builder</span>
+        <span id="ctx-header-chevron">▼</span>
+      </div>
+      <div id="ctx-body">
+        <div class="ctx-purpose-row">
+          <button class="ctx-purpose-btn active" data-purpose="onboarding">Onboarding</button>
+          <button class="ctx-purpose-btn" data-purpose="debug">Debug</button>
+          <button class="ctx-purpose-btn" data-purpose="docs">Write Docs</button>
+        </div>
+        <div id="ctx-text-wrap">
+          <textarea id="ctx-text" readonly spellcheck="false"></textarea>
+        </div>
+        <button id="ctx-copy-btn">
+          <span id="ctx-copy-icon">⎘</span>
+          <span id="ctx-copy-label">Copy context</span>
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script>
 // ─── Data ────────────────────────────────────────────────────────────────────
-const DATA = {"services":[{"id":"order-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"payment-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"user-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"inventory-service","endpointCount":6,"language":"java","framework":"spring-boot"},{"id":"notification-service","endpointCount":5,"language":"csharp","framework":"aspnet"},{"id":"analytics-service","endpointCount":5,"language":"python","framework":"fastapi"},{"id":"email-service","endpointCount":6,"language":"python","framework":"django"}],"graphEdges":[{"fromService":"inventory-service","toService":"order-service","fromEndpoint":"GET /api/inventory","confidence":0.85},{"fromService":"inventory-service","toService":"notification-service","fromEndpoint":"GET /api/inventory","confidence":0.7},{"fromService":"notification-service","toService":"user-service","fromEndpoint":"POST /api/notification","confidence":0.85},{"fromService":"notification-service","toService":"order-service","fromEndpoint":"POST /api/notification/stock-reserved","confidence":0.85},{"fromService":"analytics-service","toService":"order-service","fromEndpoint":"GET /api/analytics/revenue","confidence":0.85},{"fromService":"analytics-service","toService":"payment-service","fromEndpoint":"GET /api/analytics/revenue","confidence":0.85},{"fromService":"analytics-service","toService":"user-service","fromEndpoint":"GET /api/analytics/users/{user_id}/activity","confidence":0.85},{"fromService":"email-service","toService":"user-service","fromEndpoint":"POST /api/emails/bulk","confidence":0.85},{"fromService":"email-service","toService":"notification-service","fromEndpoint":"GET /api/emails","confidence":0.85},{"fromService":"order-service","toService":"user-service","fromEndpoint":"Referenced URL: https://user-service.internal:8080","confidence":0.5},{"fromService":"order-service","toService":"payment-service","fromEndpoint":"Referenced URL: https://payment-service.internal:8081","confidence":0.5}],"endpointsData":[{"id":"ep0","service":"inventory-service","method":"GET","path":"/api/inventory","fullPath":"/api/inventory","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":14,"controller":"InventoryController","requestBody":null,"response":null,"hasChain":true},{"id":"ep1","service":"inventory-service","method":"GET","path":"/{sku}","fullPath":"/{sku}","summary":"Get inventory by SKU","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":33,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep2","service":"inventory-service","method":"GET","path":"/","fullPath":"/","summary":"List all inventory items","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":43,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep3","service":"inventory-service","method":"POST","path":"/reserve","fullPath":"/reserve","summary":"Reserve stock for an order","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":53,"controller":"InventoryController","requestBody":{"typeName":"ReserveStockRequest","fields":[{"name":"orderId","type":"string","required":false},{"name":"sku","type":"string","required":false},{"name":"quantity","type":"integer","required":false}],"source":"dto-class"},"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":true},{"id":"ep4","service":"inventory-service","method":"PUT","path":"/{sku}/quantity","fullPath":"/{sku}/quantity","summary":"Update inventory quantity","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":75,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep5","service":"inventory-service","method":"DELETE","path":"/reserve/{reservationId}","fullPath":"/reserve/{reservationId}","summary":"Release reserved stock","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":87,"controller":"InventoryController","requestBody":null,"response":{"typeName":"Void","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep6","service":"notification-service","method":"POST","path":"/","fullPath":"/api/notification","summary":"Send a notification to a user","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":21,"controller":"NotificationController","requestBody":{"typeName":"SendNotificationRequest","fields":[{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"OrderId","type":"string","required":false},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep7","service":"notification-service","method":"POST","path":"stock-reserved","fullPath":"/api/notification/stock-reserved","summary":"Handle stock reserved event — notify user their order is confirmed","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":39,"controller":"NotificationController","requestBody":{"typeName":"StockReservedEvent","fields":[{"name":"OrderId","type":"string","required":true},{"name":"Sku","type":"string","required":true},{"name":"Quantity","type":"integer","required":true}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep8","service":"notification-service","method":"GET","path":"user/{userId}","fullPath":"/api/notification/user/{userId}","summary":"Get all notifications for a user","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":57,"controller":"NotificationController","requestBody":null,"response":{"typeName":"NotificationDto","fields":[{"name":"Id","type":"uuid","required":true},{"name":"UserId","type":"string","required":true},{"name":"Type","type":"string","required":true},{"name":"Message","type":"string","required":true},{"name":"Status","type":"string","required":true},{"name":"SentAt","type":"datetime","required":true},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep9","service":"notification-service","method":"GET","path":"{id}","fullPath":"/api/notification/{id}","summary":"Get a notification by ID","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":64,"controller":"NotificationController","requestBody":null,"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":false},{"id":"ep10","service":"notification-service","method":"DELETE","path":"{id}","fullPath":"/api/notification/{id}","summary":"Delete a notification","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":71,"controller":"NotificationController","requestBody":null,"response":null,"hasChain":false},{"id":"ep11","service":"analytics-service","method":"GET","path":"/revenue","fullPath":"/api/analytics/revenue","summary":"Get revenue report for a given period.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":17,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep12","service":"analytics-service","method":"GET","path":"/users/{user_id}/activity","fullPath":"/api/analytics/users/{user_id}/activity","summary":"Get activity report for a specific user.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":34,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep13","service":"analytics-service","method":"POST","path":"/events","fullPath":"/api/analytics/events","summary":"Track a custom analytics event.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":50,"controller":"analytics","requestBody":{"typeName":"TrackEventRequest","fields":[{"name":"event_type","type":"string","required":true},{"name":"user_id","type":"string","required":false},{"name":"order_id","type":"string","required":false},{"name":"metadata","type":"object","required":false}],"source":"dto-class"},"response":null,"hasChain":false},{"id":"ep14","service":"analytics-service","method":"GET","path":"/dashboard","fullPath":"/api/analytics/dashboard","summary":"Get a full dashboard summary.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":56,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep15","service":"analytics-service","method":"DELETE","path":"/events/{event_id}","fullPath":"/api/analytics/events/{event_id}","summary":"Delete a tracked event.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":75,"controller":"analytics","requestBody":null,"response":null,"hasChain":false},{"id":"ep16","service":"email-service","method":"POST","path":"/api/emails/bulk","fullPath":"/api/emails/bulk","summary":"Send the same email to multiple recipients.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":63,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":true},{"id":"ep17","service":"email-service","method":"GET","path":"/api/emails/templates","fullPath":"/api/emails/templates","summary":"List available email templates.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":80,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep18","service":"email-service","method":"GET","path":"/api/emails","fullPath":"/api/emails","summary":"Send a transactional email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":21,"controller":"email_Controller","requestBody":{"typeName":"SendEmailSerializer","fields":[{"name":"to_email","type":"email","required":true},{"name":"subject","type":"char","required":true},{"name":"body","type":"char","required":true},{"name":"template","type":"char","required":false},{"name":"order_id","type":"char","required":false},{"name":"user_id","type":"char","required":false}],"source":"dto-class"},"response":null,"hasChain":true},{"id":"ep19","service":"email-service","method":"POST","path":"/api/emails","fullPath":"/api/emails","summary":"Send a transactional email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":25,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep20","service":"email-service","method":"GET","path":"/api/emails/{id}","fullPath":"/api/emails/{id}","summary":"Cancel a queued email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":53,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep21","service":"email-service","method":"DELETE","path":"/api/emails/{id}","fullPath":"/api/emails/{id}","summary":"Cancel a queued email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":58,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false}],"callChains":[{"rootService":"inventory-service","rootEndpoint":"GET /api/inventory","tree":{"service":"inventory-service","endpoint":"GET /api/inventory","fullPath":"/api/inventory","calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"notification-service","endpoint":"POST /api/notifications/stock-reserved","fullPath":"/api/notifications/stock-reserved","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"POST /api/orders/reservation-released","fullPath":"/api/orders/reservation-released","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:GET /api/inventory","to":"order-service:GET /api/orders/","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/","confidence":0.85},{"from":"inventory-service:GET /api/inventory","to":"notification-service:POST /api/notifications/stock-reserved","fromService":"inventory-service","toService":"notification-service","rawUrl":"notificationServiceUrl + \"/api/notifications/stock-reserved","confidence":0.7}]},{"rootService":"inventory-service","rootEndpoint":"POST /reserve","tree":{"service":"inventory-service","endpoint":"POST /reserve","fullPath":"/reserve","requestBody":{"typeName":"ReserveStockRequest","fields":[{"name":"orderId","type":"string","required":false},{"name":"sku","type":"string","required":false},{"name":"quantity","type":"integer","required":false}],"source":"dto-class"},"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"notification-service","endpoint":"POST /api/notifications/stock-reserved","fullPath":"/api/notifications/stock-reserved","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:POST /reserve","to":"order-service:GET /api/orders/","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/","confidence":0.85},{"from":"inventory-service:POST /reserve","to":"notification-service:POST /api/notifications/stock-reserved","fromService":"inventory-service","toService":"notification-service","rawUrl":"notificationServiceUrl + \"/api/notifications/stock-reserved","confidence":0.7}]},{"rootService":"inventory-service","rootEndpoint":"DELETE /reserve/{reservationId}","tree":{"service":"inventory-service","endpoint":"DELETE /reserve/{reservationId}","fullPath":"/reserve/{reservationId}","response":{"typeName":"Void","fields":[],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"POST /api/orders/reservation-released","fullPath":"/api/orders/reservation-released","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:DELETE /reserve/{reservationId}","to":"order-service:POST /api/orders/reservation-released","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/reservation-released","confidence":0.85}]},{"rootService":"notification-service","rootEndpoint":"POST /api/notification","tree":{"service":"notification-service","endpoint":"POST /api/notification","fullPath":"/api/notification","requestBody":{"typeName":"SendNotificationRequest","fields":[{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"OrderId","type":"string","required":false},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"calls":[{"service":"user-service","endpoint":"GET /api/users/","fullPath":"/api/users/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET user-service","fullPath":"user-service","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"notification-service:POST /api/notification","to":"user-service:GET /api/users/","fromService":"notification-service","toService":"user-service","rawUrl":"${userServiceUrl}/api/users/{request.UserId}","confidence":0.85}]},{"rootService":"notification-service","rootEndpoint":"POST /api/notification/stock-reserved","tree":{"service":"notification-service","endpoint":"POST /api/notification/stock-reserved","fullPath":"/api/notification/stock-reserved","requestBody":{"typeName":"StockReservedEvent","fields":[{"name":"OrderId","type":"string","required":true},{"name":"Sku","type":"string","required":true},{"name":"Quantity","type":"integer","required":true}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET /api/users/by-order/","fullPath":"/api/users/by-order/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"GET order-service","fullPath":"order-service","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET user-service","fullPath":"user-service","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"notification-service:POST /api/notification/stock-reserved","to":"order-service:GET /api/orders/","fromService":"notification-service","toService":"order-service","rawUrl":"${orderServiceUrl}/api/orders/{evt.OrderId}","confidence":0.85},{"from":"notification-service:POST /api/notification/stock-reserved","to":"user-service:GET /api/users/by-order/","fromService":"notification-service","toService":"user-service","rawUrl":"${userServiceUrl}/api/users/by-order/{evt.OrderId}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/revenue","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/revenue","fullPath":"/api/analytics/revenue","calls":[{"service":"order-service","endpoint":"GET /api/orders","fullPath":"/api/orders","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"payment-service","endpoint":"GET /api/payments","fullPath":"/api/payments","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/revenue","to":"order-service:GET /api/orders","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders?period={period}","confidence":0.85},{"from":"analytics-service:GET /api/analytics/revenue","to":"payment-service:GET /api/payments","fromService":"analytics-service","toService":"payment-service","rawUrl":"{PAYMENT_SERVICE_URL}/api/payments?period={period}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/users/{user_id}/activity","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/users/{user_id}/activity","fullPath":"/api/analytics/users/{user_id}/activity","calls":[{"service":"user-service","endpoint":"GET /api/users/","fullPath":"/api/users/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"GET /api/orders","fullPath":"/api/orders","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/users/{user_id}/activity","to":"user-service:GET /api/users/","fromService":"analytics-service","toService":"user-service","rawUrl":"{USER_SERVICE_URL}/api/users/{user_id}","confidence":0.85},{"from":"analytics-service:GET /api/analytics/users/{user_id}/activity","to":"order-service:GET /api/orders","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders?user_id={user_id}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/dashboard","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/dashboard","fullPath":"/api/analytics/dashboard","calls":[{"service":"order-service","endpoint":"GET /api/orders/summary","fullPath":"/api/orders/summary","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET /api/users/active-count","fullPath":"/api/users/active-count","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"payment-service","endpoint":"GET /api/payments/summary","fullPath":"/api/payments/summary","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/dashboard","to":"order-service:GET /api/orders/summary","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders/summary","confidence":0.85},{"from":"analytics-service:GET /api/analytics/dashboard","to":"user-service:GET /api/users/active-count","fromService":"analytics-service","toService":"user-service","rawUrl":"{USER_SERVICE_URL}/api/users/active-count","confidence":0.85},{"from":"analytics-service:GET /api/analytics/dashboard","to":"payment-service:GET /api/payments/summary","fromService":"analytics-service","toService":"payment-service","rawUrl":"{PAYMENT_SERVICE_URL}/api/payments/summary","confidence":0.85}]},{"rootService":"email-service","rootEndpoint":"POST /api/emails/bulk","tree":{"service":"email-service","endpoint":"POST /api/emails/bulk","fullPath":"/api/emails/bulk","calls":[{"service":"user-service","endpoint":"POST /api/users/validate-bulk","fullPath":"/api/users/validate-bulk","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"email-service:POST /api/emails/bulk","to":"user-service:POST /api/users/validate-bulk","fromService":"email-service","toService":"user-service","rawUrl":"USER_SERVICE_URL + \"/api/users/validate-bulk","confidence":0.85}]},{"rootService":"email-service","rootEndpoint":"GET /api/emails","tree":{"service":"email-service","endpoint":"GET /api/emails","fullPath":"/api/emails","requestBody":{"typeName":"SendEmailSerializer","fields":[{"name":"to_email","type":"email","required":true},{"name":"subject","type":"char","required":true},{"name":"body","type":"char","required":true},{"name":"template","type":"char","required":false},{"name":"order_id","type":"char","required":false},{"name":"user_id","type":"char","required":false}],"source":"dto-class"},"calls":[{"service":"notification-service","endpoint":"POST /api/notifications","fullPath":"/api/notifications","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"email-service:GET /api/emails","to":"notification-service:POST /api/notifications","fromService":"email-service","toService":"notification-service","rawUrl":"NOTIFICATION_SERVICE_URL + \"/api/notifications","confidence":0.85}]}],"controllerGroups":{"inventory-service":[{"name":"InventoryController","endpoints":["ep0","ep1","ep2","ep3","ep4","ep5"]}],"notification-service":[{"name":"NotificationController","endpoints":["ep6","ep7","ep8","ep9","ep10"]}],"analytics-service":[{"name":"analytics","endpoints":["ep11","ep12","ep13","ep14","ep15"]}],"email-service":[{"name":"email_Controller","endpoints":["ep16","ep17","ep18","ep19","ep20","ep21"]}]}};
+const DATA = {"services":[{"id":"api-gateway","endpointCount":2,"language":"typescript","framework":"express"},{"id":"order-service","endpointCount":2,"language":"java","framework":"spring-boot"},{"id":"user-service","endpointCount":2,"language":"typescript","framework":"nestjs"},{"id":"inventory-service","endpointCount":1,"language":"python","framework":"fastapi"},{"id":"notification-service","endpointCount":1,"language":"typescript","framework":"express"}],"graphEdges":[{"fromService":"api-gateway","toService":"user-service","fromEndpoint":"POST /api/checkout","confidence":0.92,"rawUrl":"${USER_SERVICE_URL}/api/users/${userId}","type":"sync"},{"fromService":"api-gateway","toService":"inventory-service","fromEndpoint":"POST /api/checkout","confidence":0.88,"rawUrl":"${INVENTORY_SERVICE_URL}/api/inventory/reserve","type":"sync"},{"fromService":"api-gateway","toService":"order-service","fromEndpoint":"POST /api/checkout","confidence":0.9,"rawUrl":"${ORDER_SERVICE_URL}/api/orders","type":"sync"},{"fromService":"order-service","toService":"notification-service","fromEndpoint":"POST /api/orders","confidence":0.85,"rawUrl":"${NOTIFICATION_SERVICE_URL}/api/notify/order-confirmation","type":"sync"}],"endpointsData":[{"id":"ep0","service":"api-gateway","method":"POST","path":"/checkout","fullPath":"/api/checkout","summary":"Unified checkout — validates user, reserves inventory, creates order, sends confirmation","sourceFile":"src/routes/checkout.ts","line":22,"controller":"checkout","requestBody":{"typeName":"CheckoutRequest","fields":[{"name":"userId","type":"string","required":true},{"name":"cartItems","type":"CartItem[]","required":true},{"name":"paymentId","type":"string","required":true}],"source":"dto-class"},"response":{"typeName":"CheckoutResponse","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true},{"name":"eta","type":"string","required":false}],"source":"dto-class"},"hasChain":true,"messageEvents":[]},{"id":"ep1","service":"api-gateway","method":"GET","path":"/order-status/:orderId","fullPath":"/api/order-status/:orderId","summary":"Get full order status including delivery tracking","sourceFile":"src/routes/order-status.ts","line":10,"controller":"order-status","requestBody":null,"response":{"typeName":"OrderStatusResponse","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true},{"name":"trackingCode","type":"string","required":false}],"source":"dto-class"},"hasChain":true,"messageEvents":[]},{"id":"ep2","service":"order-service","method":"POST","path":"/orders","fullPath":"/api/orders","summary":"Create a new order and trigger notification","sourceFile":"src/main/java/com/shop/orders/OrderController.java","line":44,"controller":"OrderController","requestBody":{"typeName":"CreateOrderRequest","fields":[{"name":"userId","type":"string","required":true},{"name":"items","type":"OrderItem[]","required":true},{"name":"paymentId","type":"string","required":true}],"source":"dto-class"},"response":{"typeName":"OrderDto","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true},{"name":"createdAt","type":"string","required":true}],"source":"dto-class"},"hasChain":true,"messageEvents":[{"topic":"order.created","direction":"publish","pattern":"kafka","payloadType":"OrderCreatedEvent"}]},{"id":"ep3","service":"order-service","method":"GET","path":"/orders/:orderId","fullPath":"/api/orders/:orderId","summary":"Fetch order details by ID","sourceFile":"src/main/java/com/shop/orders/OrderController.java","line":88,"controller":"OrderController","requestBody":null,"response":{"typeName":"OrderDto","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true},{"name":"items","type":"OrderItem[]","required":true},{"name":"createdAt","type":"string","required":true}],"source":"dto-class"},"hasChain":false,"messageEvents":[]},{"id":"ep4","service":"user-service","method":"GET","path":"/users/:id","fullPath":"/api/users/:id","summary":"Get user profile and address book","sourceFile":"src/users/users.controller.ts","line":18,"controller":"users.controller","requestBody":null,"response":{"typeName":"UserDto","fields":[{"name":"id","type":"string","required":true},{"name":"email","type":"string","required":true},{"name":"name","type":"string","required":true},{"name":"address","type":"AddressDto","required":false}],"source":"dto-class"},"hasChain":false,"messageEvents":[]},{"id":"ep5","service":"user-service","method":"POST","path":"/users","fullPath":"/api/users","summary":"Register a new user account","sourceFile":"src/users/users.controller.ts","line":32,"controller":"users.controller","requestBody":{"typeName":"CreateUserDto","fields":[{"name":"email","type":"string","required":true},{"name":"name","type":"string","required":true},{"name":"password","type":"string","required":true}],"source":"dto-class"},"response":{"typeName":"UserDto","fields":[{"name":"id","type":"string","required":true},{"name":"email","type":"string","required":true}],"source":"dto-class"},"hasChain":false,"messageEvents":[{"topic":"user.registered","direction":"publish","pattern":"kafka","payloadType":"UserRegisteredEvent"}]},{"id":"ep6","service":"inventory-service","method":"POST","path":"/inventory/reserve","fullPath":"/api/inventory/reserve","summary":"Reserve stock for items in a cart — rolls back if any item is unavailable","sourceFile":"app/routers/inventory.py","line":28,"controller":"inventory","requestBody":{"typeName":"ReserveRequest","fields":[{"name":"items","type":"ReserveItem[]","required":true},{"name":"orderId","type":"string","required":true}],"source":"pydantic"},"response":{"typeName":"ReserveResponse","fields":[{"name":"reservationId","type":"string","required":true},{"name":"allAvailable","type":"boolean","required":true},{"name":"unavailable","type":"string[]","required":false}],"source":"pydantic"},"hasChain":false,"messageEvents":[{"topic":"inventory.reserved","direction":"publish","pattern":"kafka","payloadType":"InventoryReservedEvent"}]},{"id":"ep7","service":"notification-service","method":"POST","path":"/notify/order-confirmation","fullPath":"/api/notify/order-confirmation","summary":"Send order confirmation email and push notification to customer","sourceFile":"src/notify/notify.controller.ts","line":14,"controller":"notify.controller","requestBody":{"typeName":"OrderConfirmationRequest","fields":[{"name":"orderId","type":"string","required":true},{"name":"userId","type":"string","required":true},{"name":"email","type":"string","required":true},{"name":"items","type":"any[]","required":true}],"source":"dto-class"},"response":{"typeName":"NotifyResponse","fields":[{"name":"sent","type":"boolean","required":true},{"name":"messageId","type":"string","required":false}],"source":"dto-class"},"hasChain":false,"messageEvents":[{"topic":"order.created","direction":"subscribe","pattern":"kafka","payloadType":"OrderCreatedEvent"},{"topic":"inventory.reserved","direction":"subscribe","pattern":"kafka","payloadType":"InventoryReservedEvent"}]}],"callChains":[{"rootService":"api-gateway","rootEndpoint":"POST /api/checkout","edges":[{"from":"api-gateway:POST /api/checkout","to":"user-service:GET /api/users/:id","fromService":"api-gateway","toService":"user-service","rawUrl":"${USER_SERVICE_URL}/api/users/${userId}","confidence":0.92},{"from":"api-gateway:POST /api/checkout","to":"inventory-service:POST /api/inventory/reserve","fromService":"api-gateway","toService":"inventory-service","rawUrl":"${INVENTORY_SERVICE_URL}/api/inventory/reserve","confidence":0.88},{"from":"api-gateway:POST /api/checkout","to":"order-service:POST /api/orders","fromService":"api-gateway","toService":"order-service","rawUrl":"${ORDER_SERVICE_URL}/api/orders","confidence":0.9},{"from":"order-service:POST /api/orders","to":"notification-service:POST /api/notify/order-confirmation","fromService":"order-service","toService":"notification-service","rawUrl":"${NOTIFICATION_SERVICE_URL}/api/notify/order-confirmation","confidence":0.85}],"tree":{"service":"api-gateway","endpoint":"POST /api/checkout","fullPath":"/api/checkout","requestBody":{"typeName":"CheckoutRequest","fields":[{"name":"userId","type":"string","required":true},{"name":"cartItems","type":"CartItem[]","required":true},{"name":"paymentId","type":"string","required":true}],"source":"dto-class"},"response":{"typeName":"CheckoutResponse","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true}],"source":"dto-class"},"isLeaf":false,"isCycle":false,"isUnresolved":false,"calls":[{"service":"user-service","endpoint":"GET /api/users/:id","fullPath":"/api/users/:id","calls":[],"isLeaf":true,"isCycle":false,"isUnresolved":false},{"service":"inventory-service","endpoint":"POST /api/inventory/reserve","fullPath":"/api/inventory/reserve","calls":[],"isLeaf":true,"isCycle":false,"isUnresolved":false},{"service":"order-service","endpoint":"POST /api/orders","fullPath":"/api/orders","requestBody":{"typeName":"CreateOrderRequest","fields":[{"name":"userId","type":"string","required":true},{"name":"items","type":"OrderItem[]","required":true}],"source":"dto-class"},"response":{"typeName":"OrderDto","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true}],"source":"dto-class"},"isLeaf":false,"isCycle":false,"isUnresolved":false,"calls":[{"service":"notification-service","endpoint":"POST /api/notify/order-confirmation","fullPath":"/api/notify/order-confirmation","calls":[],"isLeaf":true,"isCycle":false,"isUnresolved":false}]}]}},{"rootService":"api-gateway","rootEndpoint":"GET /api/order-status/:orderId","edges":[{"from":"api-gateway:GET /api/order-status/:orderId","to":"order-service:GET /api/orders/:orderId","fromService":"api-gateway","toService":"order-service","rawUrl":"${ORDER_SERVICE_URL}/api/orders/${orderId}","confidence":0.92}],"tree":{"service":"api-gateway","endpoint":"GET /api/order-status/:orderId","fullPath":"/api/order-status/:orderId","response":{"typeName":"OrderStatusResponse","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true},{"name":"trackingCode","type":"string","required":false}],"source":"dto-class"},"isLeaf":false,"isCycle":false,"isUnresolved":false,"calls":[{"service":"order-service","endpoint":"GET /api/orders/:orderId","fullPath":"/api/orders/:orderId","calls":[],"isLeaf":true,"isCycle":false,"isUnresolved":false}]}},{"rootService":"order-service","rootEndpoint":"POST /api/orders","edges":[{"from":"order-service:POST /api/orders","to":"notification-service:POST /api/notify/order-confirmation","fromService":"order-service","toService":"notification-service","rawUrl":"${NOTIFICATION_SERVICE_URL}/api/notify/order-confirmation","confidence":0.85}],"tree":{"service":"order-service","endpoint":"POST /api/orders","fullPath":"/api/orders","requestBody":{"typeName":"CreateOrderRequest","fields":[{"name":"userId","type":"string","required":true},{"name":"items","type":"OrderItem[]","required":true}],"source":"dto-class"},"response":{"typeName":"OrderDto","fields":[{"name":"orderId","type":"string","required":true},{"name":"status","type":"string","required":true}],"source":"dto-class"},"isLeaf":false,"isCycle":false,"isUnresolved":false,"calls":[{"service":"notification-service","endpoint":"POST /api/notify/order-confirmation","fullPath":"/api/notify/order-confirmation","calls":[],"isLeaf":true,"isCycle":false,"isUnresolved":false}]}}],"controllerGroups":{"api-gateway":[{"name":"checkout","endpoints":["ep0"]},{"name":"order-status","endpoints":["ep1"]}],"order-service":[{"name":"OrderController","endpoints":["ep2","ep3"]}],"user-service":[{"name":"users.controller","endpoints":["ep4","ep5"]}],"inventory-service":[{"name":"inventory","endpoints":["ep6"]}],"notification-service":[{"name":"notify.controller","endpoints":["ep7"]}]}};
 const { services, graphEdges, endpointsData, callChains, controllerGroups } = DATA;
 
 const SERVICE_COLORS = [
@@ -375,7 +478,12 @@ function buildServiceElements() {
       source: e.fromService,
       target: e.toService,
       label: e.fromEndpoint + ' → ' + e.toService,
-      confidence: e.confidence,
+      fromService: e.fromService,
+      toService: e.toService,
+      confidence: e.confidence ?? 0.5,
+      rawUrl: e.rawUrl,
+      callPattern: e.callPattern ?? '',
+      type: e.type ?? 'sync',
     }
   }));
   return { nodes, edges };
@@ -447,9 +555,30 @@ function buildControllerElements() {
           source: srcNodeId,
           target: tgtNodeId,
           confidence: edge.confidence,
+          type: 'sync',
         });
       }
     });
+  });
+
+  // Add async edges from message queues
+  graphEdges.forEach(edge => {
+    if (edge.type === 'async') {
+      const fromSvc = edge.fromService;
+      const toSvc = edge.toService;
+      const srcNodeId = 'svc::' + fromSvc;
+      const tgtNodeId = 'svc::' + toSvc;
+      const edgeKey = srcNodeId + '→' + tgtNodeId + ':async';
+      if (!edgeMap.has(edgeKey)) {
+        edgeMap.set(edgeKey, {
+          id: 'ce' + edgeMap.size,
+          source: srcNodeId,
+          target: tgtNodeId,
+          confidence: 0.8,
+          type: 'async',
+        });
+      }
+    }
   });
 
   const edges = Array.from(edgeMap.values()).map(d => ({ data: d }));
@@ -503,12 +632,28 @@ const cyStyle = [
     }
   },
   {
+    selector: 'edge[confidence >= 0.9]',
+    style: { 'line-color': '#3fb950', 'target-arrow-color': '#3fb950' }
+  },
+  {
+    selector: 'edge[confidence >= 0.7][confidence < 0.9]',
+    style: { 'line-color': '#d29922', 'target-arrow-color': '#d29922' }
+  },
+  {
+    selector: 'edge[confidence < 0.7]',
+    style: { 'line-color': '#f85149', 'target-arrow-color': '#f85149' }
+  },
+  {
     selector: 'edge.highlighted',
     style: { 'line-color': '#58a6ff', 'target-arrow-color': '#58a6ff', 'width': 2.5, 'opacity': 1, 'z-index': 10 }
   },
   {
     selector: 'edge.dimmed',
     style: { 'opacity': 0.1 }
+  },
+  {
+    selector: 'edge[type="async"]',
+    style: { 'line-style': 'dashed', 'line-color': '#d29922', 'target-arrow-color': '#d29922', 'line-dash-pattern': [4, 4] }
   },
 ];
 
@@ -526,6 +671,11 @@ const cy = cytoscape({
   wheelSensitivity: 0.3,
 });
 
+// Show confidence legend if there are edges
+if (cy.edges().length > 0) {
+  document.getElementById('confidence-legend').classList.add('visible');
+}
+
 // ─── View switcher ─────────────────────────────────────────────────────────────
 function switchView(view) {
   if (view === currentView && !isSingleService) return;
@@ -539,6 +689,15 @@ function switchView(view) {
   const { nodes, edges } = view === 'controller' ? buildControllerElements() : buildServiceElements();
   cy.elements().remove();
   cy.add([...nodes, ...edges]);
+
+  // Update legend visibility
+  const legendEl = document.getElementById('confidence-legend');
+  if (cy.edges().length > 0) {
+    legendEl.classList.add('visible');
+  } else {
+    legendEl.classList.remove('visible');
+  }
+
   cy.layout(view === 'controller'
     ? { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 6000, nodeOverlap: 30, idealEdgeLength: 120, padding: 50 }
     : { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 8000, nodeOverlap: 40, idealEdgeLength: 180, padding: 60 }
@@ -723,17 +882,29 @@ function highlightChain(chainEdges) {
   resetGraph();
   if (!chainEdges || chainEdges.length === 0) return;
 
-  const involvedIds = new Set();
-  chainEdges.forEach(e => { involvedIds.add(e.fromService); involvedIds.add(e.toService); });
+  const involvedServices = new Set();
+  chainEdges.forEach(e => { involvedServices.add(e.fromService); involvedServices.add(e.toService); });
 
   cy.elements().forEach(el => {
     if (el.isNode()) {
-      if (involvedIds.has(el.id())) el.addClass('highlighted');
+      // In service view: match by service ID
+      // In controller view: match if node belongs to an involved service
+      const nid = el.id();
+      const nSvc = el.data('serviceId') || nid;
+      const inChain = involvedServices.has(nid) || involvedServices.has(nSvc) ||
+        (nid.startsWith('svc::') && involvedServices.has(nid.slice(5)));
+      if (inChain) el.addClass('highlighted');
       else el.addClass('dimmed');
     }
     if (el.isEdge()) {
       const src = el.data('source'), tgt = el.data('target');
-      const isInChain = chainEdges.some(e => e.fromService === src && e.toService === tgt);
+      const srcSvc = cy.$('#' + src).data('serviceId') || src;
+      const tgtSvc = cy.$('#' + tgt).data('serviceId') || tgt;
+      // Match edge if it connects services/controllers in the chain
+      const isInChain = chainEdges.some(e =>
+        (e.fromService === src && e.toService === tgt) ||
+        (e.fromService === srcSvc && e.toService === tgtSvc)
+      );
       if (isInChain) el.addClass('highlighted');
       else el.addClass('dimmed');
     }
@@ -741,6 +912,37 @@ function highlightChain(chainEdges) {
 
   const highlighted = cy.$('.highlighted');
   if (highlighted.length) cy.animate({ fit: { eles: highlighted, padding: 80 }, duration: 300 });
+}
+
+// Animate through call chain hops step by step
+function animateChainHops(chainEdges) {
+  if (!chainEdges || chainEdges.length === 0) return;
+  resetGraph();
+
+  let step = 0;
+  function showStep() {
+    if (step >= chainEdges.length) {
+      // All hops shown — keep final state
+      return;
+    }
+    const edge = chainEdges[step];
+    // Find and highlight the edge on the graph
+    cy.edges().forEach(el => {
+      const src = el.data('source'), tgt = el.data('target');
+      const srcSvc = cy.$('#' + src).data('serviceId') || src;
+      const tgtSvc = cy.$('#' + tgt).data('serviceId') || tgt;
+      if ((edge.fromService === src && edge.toService === tgt) ||
+          (edge.fromService === srcSvc && edge.toService === tgtSvc)) {
+        el.addClass('highlighted');
+        el.removeClass('dimmed');
+        // Dim the edge temporarily with a flash
+        el.animate({ style: { 'width': 4 } }, { duration: 200, complete: () => el.animate({ style: { 'width': 2.5 } }, { duration: 200 }) });
+      }
+    });
+    step++;
+    setTimeout(showStep, 500);
+  }
+  showStep();
 }
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
@@ -763,6 +965,8 @@ function closePanel() {
   panel.classList.remove('open');
   resetGraph();
   document.querySelectorAll('.endpoint-item.selected').forEach(el => el.classList.remove('selected'));
+  document.getElementById('context-builder').style.display = 'none';
+  ctxCurrentEndpoint = null;
 }
 
 document.getElementById('panel-close').addEventListener('click', closePanel);
@@ -803,8 +1007,13 @@ function selectEndpoint(ep) {
   // Call chain
   const chains = callChains.filter(c => c.rootService === ep.service && c.rootEndpoint === ep.method + ' ' + (ep.fullPath || ep.path));
   if (chains.length > 0) {
+    const safeService = ep.service.replace(/'/g, "\'");
+    const safeEndpoint = (ep.method + ' ' + (ep.fullPath || ep.path)).replace(/'/g, "\'");
     html += `<div class="panel-section">
-      <div class="panel-section-title">Call Chain</div>
+      <div class="panel-section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>Call Chain</span>
+        <button class="chain-play-btn" onclick="(function(){const ch=DATA.callChains.find(c=>c.rootService==='${safeService}'&&c.rootEndpoint==='${safeEndpoint}');if(ch)animateChainHops(ch.edges);})()" title="Animate call hops on graph">▶ Animate</button>
+      </div>
       <div class="chain-tree">${renderChainNode(chains[0].tree, 0)}</div>
     </div>`;
     highlightChain(chains[0].edges);
@@ -814,6 +1023,9 @@ function selectEndpoint(ep) {
   }
 
   openPanel(html, ep.fullPath || ep.path, ep.method);
+
+  // Populate context builder for this endpoint
+  updateContextBuilder(ep);
 }
 
 function renderPayload(payload) {
@@ -867,6 +1079,38 @@ function selectByLabel(service, endpointLabel) {
   const ep = endpointsData.find(e => e.service === service && e.method === method && (e.fullPath === path || e.path === path));
   if (ep) selectEndpoint(ep);
 }
+
+// ─── Edge hover tooltip ───────────────────────────────────────────────────────
+let edgeTip = null;
+cy.on('mouseover', 'edge', function(e) {
+  const edge = e.target;
+  const conf = Math.round((edge.data('confidence') ?? 0) * 100);
+  const from = edge.data('fromService') ?? edge.data('from') ?? '';
+  const to = edge.data('toService') ?? edge.data('to') ?? '';
+  const via = edge.data('callPattern') ?? edge.data('rawUrl') ?? '';
+  const confColor = conf >= 90 ? '#3fb950' : conf >= 70 ? '#d29922' : '#f85149';
+
+  const tip = document.createElement('div');
+  tip.id = 'edge-tooltip';
+  tip.style.cssText = 'position:fixed;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#c9d1d9;pointer-events:none;z-index:1000;max-width:200px;word-break:break-word;';
+  let tipContent = '<div style="color:#f0f6fc;margin-bottom:4px;font-weight:600">' + from + ' → ' + to + '</div>';
+  tipContent += '<div>Confidence: <strong style="color:' + confColor + '">' + conf + '%</strong></div>';
+  if (via) tipContent += '<div style="color:#8b949e;margin-top:4px;word-break:break-all">' + via + '</div>';
+  tip.innerHTML = tipContent;
+  document.body.appendChild(tip);
+  edgeTip = tip;
+});
+
+cy.on('mousemove', 'edge', function(e) {
+  if (edgeTip) {
+    edgeTip.style.left = (e.originalEvent.clientX + 12) + 'px';
+    edgeTip.style.top = (e.originalEvent.clientY - 10) + 'px';
+  }
+});
+
+cy.on('mouseout', 'edge', function() {
+  if (edgeTip) { edgeTip.remove(); edgeTip = null; }
+});
 
 // ─── Graph node click ─────────────────────────────────────────────────────────
 cy.on('tap', 'node', function(evt) {
@@ -977,6 +1221,202 @@ setTimeout(() => document.getElementById('graph-hint').classList.add('hidden'), 
 
 // Empty state
 if (services.length === 0) document.getElementById('empty-state').style.display = 'block';
+
+// ─── Context Builder ──────────────────────────────────────────────────────────
+
+let ctxCurrentEndpoint = null;
+let ctxCurrentPurpose = 'onboarding';
+
+const CTX_PROMPTS = {
+  onboarding: (ep, svc) =>
+    `You are helping onboard a new developer to a microservices codebase.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please explain: what this endpoint does, which services it touches and why, what a new developer needs to understand to work with it safely, and any gotchas or side effects they should know about.\n\n`,
+
+  debug: (ep, svc) =>
+    `You are helping debug a production issue in a microservices system.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please identify: potential failure points in this chain, what could cause latency or errors at each hop, what to check first when this endpoint behaves unexpectedly, and any circular dependencies or unresolved calls to watch out for.\n\n`,
+
+  docs: (ep, svc) =>
+    `You are a technical writer documenting a microservices API.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please write API documentation covering: the endpoint contract (request/response), which downstream services are called and what data flows between them, any async message events triggered, and the overall purpose of this operation in the system.\n\n`,
+};
+
+function serializeChainToText(node, depth) {
+  const indent = '  '.repeat(depth);
+  const connector = depth === 0 ? '' : '└─ ';
+  let text = indent + connector + node.service + ' · ' + node.endpoint;
+  if (node.isCycle) text += '  [↺ cycle]';
+  if (node.isUnresolved) text += '  [? unresolved]';
+  if (node.isLeaf && !node.isUnresolved) text += '  [leaf]';
+  text += '\n';
+
+  // Include payload shapes if present
+  if (depth === 0 && (node.requestBody || node.response)) {
+    if (node.requestBody && node.requestBody.fields && node.requestBody.fields.length > 0) {
+      text += indent + '  Request: ' + node.requestBody.fields.map(f => f.name + ': ' + f.type + (f.required ? '*' : '')).join(', ') + '\n';
+    }
+    if (node.response && node.response.fields && node.response.fields.length > 0) {
+      text += indent + '  Response: ' + node.response.fields.map(f => f.name + ': ' + f.type).join(', ') + '\n';
+    }
+  }
+
+  if (node.calls && node.calls.length > 0) {
+    node.calls.forEach(child => { text += serializeChainToText(child, depth + 1); });
+  }
+  return text;
+}
+
+function buildContextText(ep, purpose) {
+  const chain = DATA.callChains.find(c =>
+    c.rootService === ep.service &&
+    c.rootEndpoint === ep.method + ' ' + (ep.fullPath || ep.path)
+  );
+
+  const promptFn = CTX_PROMPTS[purpose] || CTX_PROMPTS.onboarding;
+  let text = promptFn(ep, ep.service);
+
+  text += '='.repeat(60) + '\n';
+  text += 'CrossCtx Context: ' + ep.method + ' ' + (ep.fullPath || ep.path) + ' (' + ep.service + ')\n';
+  text += '='.repeat(60) + '\n\n';
+
+  // Entry point
+  text += '--- Entry Point ---\n';
+  text += 'Service:  ' + ep.service + '\n';
+  text += 'Endpoint: ' + ep.method + ' ' + (ep.fullPath || ep.path) + '\n';
+  if (ep.summary) text += 'Summary:  ' + ep.summary + '\n';
+  if (ep.sourceFile) {
+    const shortFile = ep.sourceFile.split('/').slice(-2).join('/');
+    text += 'Source:   ' + shortFile + (ep.line ? ':' + ep.line : '') + '\n';
+  }
+  if (ep.requestBody && ep.requestBody.fields && ep.requestBody.fields.length > 0) {
+    text += 'Request body:\n';
+    ep.requestBody.fields.forEach(f => {
+      text += '  ' + f.name + ': ' + f.type + (f.required ? ' (required)' : '') + '\n';
+    });
+  }
+  if (ep.response && ep.response.fields && ep.response.fields.length > 0) {
+    text += 'Response:\n';
+    ep.response.fields.forEach(f => {
+      text += '  ' + f.name + ': ' + f.type + '\n';
+    });
+  }
+
+  // Call chain
+  if (chain) {
+    text += '\n--- Call Chain ---\n';
+    text += serializeChainToText(chain.tree, 0);
+
+    // Services involved
+    const involvedSvcs = new Set();
+    involvedSvcs.add(ep.service);
+    chain.edges.forEach(e => { involvedSvcs.add(e.fromService); involvedSvcs.add(e.toService); });
+
+    text += '\n--- Services Involved (' + involvedSvcs.size + ') ---\n';
+    involvedSvcs.forEach(svcId => {
+      const svcMeta = services.find(s => s.id === svcId);
+      const epCount = endpointsData.filter(e => e.service === svcId).length;
+      if (svcMeta) {
+        text += svcId + ' (' + svcMeta.language + '/' + svcMeta.framework + ', ' + epCount + ' endpoints)\n';
+      } else {
+        text += svcId + '\n';
+      }
+    });
+
+    // Confidence summary
+    if (chain.edges.length > 0) {
+      const avgConf = Math.round(chain.edges.reduce((s, e) => s + (e.confidence || 0), 0) / chain.edges.length * 100);
+      text += '\n--- Resolution ---\n';
+      text += 'Call hops: ' + chain.edges.length + '\n';
+      text += 'Avg confidence: ' + avgConf + '%\n';
+    }
+  } else {
+    text += '\n--- Call Chain ---\n';
+    text += '(No outbound calls detected from this endpoint)\n';
+
+    text += '\n--- Service ---\n';
+    const svcMeta = services.find(s => s.id === ep.service);
+    if (svcMeta) {
+      text += ep.service + ' (' + svcMeta.language + '/' + svcMeta.framework + ')\n';
+    }
+  }
+
+  // Async message events
+  if (ep.messageEvents && ep.messageEvents.length > 0) {
+    text += '\n--- Message Events ---\n';
+    ep.messageEvents.forEach(me => {
+      text += me.direction.toUpperCase() + ' ' + me.pattern + ':' + me.topic;
+      if (me.payloadType) text += ' (' + me.payloadType + ')';
+      text += '\n';
+    });
+  }
+
+  text += '\n' + '='.repeat(60) + '\n';
+  text += 'Generated by CrossCtx — https://github.com/nareshtammineni01/crossctx\n';
+  text += '='.repeat(60);
+
+  return text;
+}
+
+function updateContextBuilder(ep) {
+  ctxCurrentEndpoint = ep;
+  const text = buildContextText(ep, ctxCurrentPurpose);
+  document.getElementById('ctx-text').value = text;
+  document.getElementById('context-builder').style.display = 'block';
+  // Auto-open the builder when a new endpoint is selected
+  document.getElementById('ctx-header').classList.add('open');
+  // Reset copy button
+  const copyBtn = document.getElementById('ctx-copy-btn');
+  copyBtn.classList.remove('copied');
+  document.getElementById('ctx-copy-label').textContent = 'Copy context';
+}
+
+// Purpose selector
+document.querySelectorAll('.ctx-purpose-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ctx-purpose-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ctxCurrentPurpose = btn.dataset.purpose;
+    if (ctxCurrentEndpoint) {
+      document.getElementById('ctx-text').value = buildContextText(ctxCurrentEndpoint, ctxCurrentPurpose);
+      // Reset copy state
+      document.getElementById('ctx-copy-btn').classList.remove('copied');
+      document.getElementById('ctx-copy-label').textContent = 'Copy context';
+    }
+  });
+});
+
+// Collapse/expand toggle
+document.getElementById('ctx-header').addEventListener('click', () => {
+  document.getElementById('ctx-header').classList.toggle('open');
+});
+
+// Copy button
+document.getElementById('ctx-copy-btn').addEventListener('click', () => {
+  const text = document.getElementById('ctx-text').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('ctx-copy-btn');
+    btn.classList.add('copied');
+    document.getElementById('ctx-copy-label').textContent = 'Copied!';
+    document.getElementById('ctx-copy-icon').textContent = '✓';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      document.getElementById('ctx-copy-label').textContent = 'Copy context';
+      document.getElementById('ctx-copy-icon').textContent = '⎘';
+    }, 2000);
+  }).catch(() => {
+    // Fallback: select the textarea so user can Cmd+C manually
+    const ta = document.getElementById('ctx-text');
+    ta.select();
+    document.getElementById('ctx-copy-label').textContent = 'Press Cmd+C to copy';
+    setTimeout(() => {
+      document.getElementById('ctx-copy-label').textContent = 'Copy context';
+    }, 2500);
+  });
+});
 </script>
 </body>
 </html>
