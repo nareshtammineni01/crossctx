@@ -8,9 +8,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Planned
-- Controller view toggle in graph for multi-service projects
+- GraphQL and gRPC detection
+- Payload extractor enrichment (cross-file DTO resolution, confidence scoring)
+- HTML report polish (depth visualization, language color bands, PNG/SVG export)
 - Go and Ruby parser support
 - Kafka/RabbitMQ message queue detection
+
+---
+
+## [0.2.1] - 2026-04-18
+
+Resolver hardening and graph interaction improvements.
+
+### Added
+
+**URL resolver — five-tier resolution strategy**
+- Strategy 0: Named client matching — covers Java `@FeignClient(name=...)`, Spring Cloud `lb://service-name`, C# `IHttpClientFactory.CreateClient("name")`
+- Kubernetes DNS resolution: `order-service.default.svc.cluster.local` → `order-service`
+- Consul DNS resolution: `order-service.service.consul` → `order-service`
+- `HTTP_CLIENT_*` prefix convention for named C# HTTP clients
+- camelCase field concat pattern: `orderServiceUrl + "/api/..."` (Java/C# field references without env annotation) now resolved via Strategy 2
+- `byEnvKey` now stores both original key, uppercased, and `UPPER_SNAKE_CASE` forms (`UserServiceUrl` → `USER_SERVICE_URL`) so lookups match regardless of hint casing
+
+**Controller view toggle in graph (multi-service)**
+- New **Services / Controllers** toggle in header bar — switches between service-level and controller-level graph views without page reload
+- Controller view shows every controller across all services as a Cytoscape node, color-coded by parent service
+- Edges in controller view are derived from call chain data and connect the exact controllers involved in each cross-service call
+- Services with no controller data fall back to a single service node in controller view
+- Toggle is hidden in single-service mode (which always shows controller nodes)
+
+**Call chain animation**
+- **▶ Animate** button added to the Call Chain section in the detail panel
+- `animateChainHops()` steps through each call hop in sequence with a flash animation on the graph edge
+- `highlightChain()` updated to work in both service view and controller view — matches nodes by `serviceId` field for controller nodes
+
+### Fixed
+
+**Java parser**
+- `extractControllerPrefix` now detects `@RequestMapping` before the class declaration (`braceDepth === 0`) — previously required `classFound = true`, which caused the annotation to be missed since it always appears on the line above `public class`. Fixes missing controller prefix in `fullPath` (e.g. `/{sku}` instead of `/api/inventory/{sku}`)
+- `extractHandlers` now skips `@RequestMapping` at `braceDepth === 0` to prevent the class-level annotation from being treated as a handler endpoint, which caused doubled paths like `/api/inventory/api/inventory`
+
+**Python parser**
+- `extractDecoratorArg` now matches bare class-name identifiers in addition to quoted strings — `response_model=RevenueReport` was silently returning `undefined` because the regex only matched `response_model="..."`. Fixes missing response type on all FastAPI `response_model=ClassName` decorators
+
+**URL resolver**
+- Edge deduplication in `walkChain` now keeps the **highest-confidence** edge for each `from→toService` pair instead of first-seen — prevents a low-confidence fragment match from blocking a higher-confidence named-client match processed later
+- Hostname registry bug: URL hints from service A pointing to service B no longer map the hostname to service A. Unscanned services now correctly yield no hostname entry (instead of mapping to the hint owner)
+- Fragment table now indexes by `fullPath` (with controller prefix) rather than `path` alone — `notification-service` now correctly registers `notification` as a fragment from `/api/notification/...` endpoints
+- `guessServiceFromEnvKey` now matches dehyphenated service names: `notificationserviceurl` finds `notification-service`
 
 ---
 

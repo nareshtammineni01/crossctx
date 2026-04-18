@@ -1,0 +1,17 @@
+name: 'CrossCtx API Diff'
+description: 'Detect breaking API changes between branches using CrossCtx'
+inputs:
+  paths:
+    description: 'Space-separated list of service directories to scan'
+    required: false
+    default: '.'
+  baseline:
+    description: 'Path to baseline JSON file'
+    required: false
+  fail-on-breaking:
+    description: 'Exit with code 1 if breaking changes detected'
+    required: false
+    default: 'true'
+runs:
+  using: 'node20'
+  main: 'dist/bin/cli.js'

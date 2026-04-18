@@ -9,7 +9,9 @@ import type {
   PayloadField,
   ServiceUrlHint,
   DetectedLanguage,
+  MessageEvent,
 } from "../types/index.js";
+import { extractMessageEvents } from "./messaging.js";
 
 const IGNORE = [
   "**/target/**",
@@ -75,6 +77,9 @@ export async function parseJavaProject(
   // Parse controllers
   const endpoints = extractJavaEndpoints(fileContents, serviceName, dtoMap);
 
+  // Extract message events
+  const messageEvents = extractMessageEvents(fileContents, "java");
+
   // Check for OpenAPI spec
   const specFile = await findOpenApiSpec(projectPath);
 
@@ -85,6 +90,7 @@ export async function parseJavaProject(
     endpoints,
     dtos: Array.from(dtoMap.values()),
     serviceUrlHints,
+    messageEvents,
     hasOpenApiSpec: !!specFile,
     specFile: specFile ?? undefined,
   };
@@ -126,7 +132,10 @@ function isControllerFile(filePath: string, content: string): boolean {
 
 function extractControllerPrefix(content: string): string {
   // Walk line-by-line tracking brace depth.
-  // @RequestMapping is only valid as a class-level annotation at brace depth 0 or 1.
+  // @RequestMapping can appear either:
+  //   (a) before the class declaration at brace depth 0 (most common — class-level annotation)
+  //   (b) at depth 1 inside the class body but before any method (rare)
+  // Stop searching once we're inside a method body (depth >= 2).
   const lines = content.split("\n");
   let braceDepth = 0;
   let classFound = false;
@@ -134,6 +143,13 @@ function extractControllerPrefix(content: string): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
+
+    // @RequestMapping at depth 0 = class-level annotation (before the class { opens)
+    // @RequestMapping at depth 1 = still class-level (after class { but before any method)
+    if (braceDepth <= 1 && trimmed.startsWith("@RequestMapping")) {
+      const m = trimmed.match(/@RequestMapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/);
+      if (m) return normalizePath(m[1]);
+    }
 
     // Track when we enter the class body
     if (!classFound && /^(?:public\s+)?(?:abstract\s+)?class\s+\w+/.test(trimmed)) {
@@ -144,12 +160,6 @@ function extractControllerPrefix(content: string): string {
     for (const ch of line) {
       if (ch === "{") braceDepth++;
       if (ch === "}") braceDepth--;
-    }
-
-    // @RequestMapping at class level = depth 1 (inside class, not inside method)
-    if (classFound && braceDepth <= 1 && trimmed.startsWith("@RequestMapping")) {
-      const m = trimmed.match(/@RequestMapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/);
-      if (m) return normalizePath(m[1]);
     }
 
     // Once we're inside a method body (depth >= 2), stop looking
@@ -178,15 +188,25 @@ function extractHandlers(
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
   const allOutboundCalls = extractJavaOutboundCalls(content, filePath);
+  let braceDepth = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // Track brace depth so we can skip class-level @RequestMapping (depth 0)
+    for (const ch of line) {
+      if (ch === "{") braceDepth++;
+      if (ch === "}") braceDepth--;
+    }
 
     // Match @GetMapping, @PostMapping, @PutMapping, @DeleteMapping, @PatchMapping
     const mappingMatch = line.match(
       /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(?:\(([^)]*)\))?/
     );
     if (!mappingMatch) continue;
+
+    // Skip @RequestMapping at depth 0 — it's the class-level prefix, not a handler
+    if (mappingMatch[1] === "RequestMapping" && braceDepth === 0) continue;
 
     const annotation = mappingMatch[1];
     const annotationArgs = mappingMatch[2] ?? "";
@@ -266,8 +286,21 @@ function extractJavaMethodSignature(
     if (sig) {
       returnType = sig[1].trim();
       methodName = sig[2];
-      paramLine = sig[3];
       bodyStartLine = i;
+
+      // If the param list closes on this line, we're done
+      if (line.includes(")")) {
+        paramLine = sig[3];
+      } else {
+        // Multi-line params: collect until closing ")" — look up to 12 more lines
+        const paramParts: string[] = [sig[3]];
+        for (let j = i + 1; j < Math.min(i + 12, lines.length); j++) {
+          const pLine = lines[j].trim();
+          paramParts.push(pLine);
+          if (pLine.includes(")")) break;
+        }
+        paramLine = paramParts.join(" ");
+      }
       break;
     }
   }
@@ -447,11 +480,15 @@ function extractJavaDTOs(fileContents: Map<string, string>): Map<string, Payload
   const dtoMap = new Map<string, PayloadShape>();
 
   for (const [filePath, content] of fileContents) {
-    if (!isDTOFile(filePath, content)) continue;
+    // Scan ALL .java/.kt files, not just those matching isDTOFile heuristics
+    if (!filePath.endsWith(".java") && !filePath.endsWith(".kt")) continue;
 
     const shapes = extractJavaPayloadShapes(content);
     for (const shape of shapes) {
-      if (shape.typeName) dtoMap.set(shape.typeName, shape);
+      // Only add to map if it has fields (avoid empty controller/service class skeletons)
+      if (shape.typeName && shape.fields.length > 0) {
+        dtoMap.set(shape.typeName, shape);
+      }
     }
   }
 
@@ -492,17 +529,21 @@ function extractJavaPayloadShapes(content: string): PayloadShape[] {
     shapes.push({ typeName, fields, source: "dto-class" });
   }
 
-  // Java classes (DTOs, entities)
-  const classRegex = /(?:public\s+)?class\s+(\w+)(?:\s+extends\s+\w+)?(?:\s+implements\s+[^{]+)?\s*\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/gs;
+  // Java classes (DTOs, entities) — use brace-depth scanner for proper nested generic handling
+  const classRegex = /(?:public\s+)?class\s+(\w+)(?:\s+extends\s+\w+)?(?:\s+implements\s+[^{]+)?\s*\{/g;
 
   while ((match = classRegex.exec(content)) !== null) {
     const typeName = match[1];
     if (["Application", "Configuration", "Controller", "Service", "Repository"].some(s => typeName.endsWith(s))) continue;
 
-    const body = match[2];
-    const fields = parseJavaClassBody(body);
-    if (fields.length > 0) {
-      shapes.push({ typeName, fields, source: "dto-class" });
+    // Extract class body using brace-depth tracking to handle nested generics
+    const bodyStart = match.index + match[0].length;
+    const body = extractJavaClassBodyByBraceDepth(content, bodyStart);
+    if (body !== null) {
+      const fields = parseJavaClassBody(body);
+      if (fields.length > 0) {
+        shapes.push({ typeName, fields, source: "dto-class" });
+      }
     }
   }
 
@@ -515,6 +556,26 @@ function extractJavaPayloadShapes(content: string): PayloadShape[] {
   }
 
   return shapes;
+}
+
+function extractJavaClassBodyByBraceDepth(content: string, startIdx: number): string | null {
+  let depth = 1; // we're already inside the opening brace
+  let endIdx = startIdx;
+
+  for (let i = startIdx; i < content.length; i++) {
+    const ch = content[i];
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (depth !== 0) return null; // unmatched braces
+  return content.substring(startIdx, endIdx);
 }
 
 function parseRecordParams(params: string): PayloadField[] {

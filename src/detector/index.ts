@@ -10,19 +10,21 @@ import type { DetectedLanguage, SupportedLanguage, SupportedFramework } from "..
  *   1. package.json with @nestjs/core → TypeScript/NestJS
  *   2. package.json with express → TypeScript/Express
  *   3. package.json (any) → TypeScript/unknown
- *   4. pom.xml with spring-boot → Java/Spring Boot
- *   5. pom.xml → Java/unknown
- *   6. .csproj → C#/ASP.NET
- *   7. requirements.txt / pyproject.toml with fastapi → Python/FastAPI
- *   8. requirements.txt with django → Python/Django
- *   9. requirements.txt with flask → Python/Flask
- *  10. requirements.txt → Python/unknown
+ *   4. go.mod → Go/unknown (or gin/chi detected from imports)
+ *   5. pom.xml with spring-boot → Java/Spring Boot
+ *   6. pom.xml → Java/unknown
+ *   7. .csproj → C#/ASP.NET
+ *   8. requirements.txt / pyproject.toml with fastapi → Python/FastAPI
+ *   9. requirements.txt with django → Python/Django
+ *  10. requirements.txt with flask → Python/Flask
+ *  11. requirements.txt → Python/unknown
  */
 export async function detectLanguage(projectPath: string): Promise<DetectedLanguage> {
   const checks: Array<() => Promise<DetectedLanguage | null>> = [
     () => checkNestJS(projectPath),
     () => checkExpress(projectPath),
     () => checkPackageJson(projectPath),
+    () => checkGo(projectPath),
     () => checkSpringBoot(projectPath),
     () => checkJava(projectPath),
     () => checkCSharp(projectPath),
@@ -187,6 +189,28 @@ async function checkCSharp(projectPath: string): Promise<DetectedLanguage | null
   }
 
   return null;
+}
+
+// ─── Go ──────────────────────────────────────────────────────────────────────
+
+async function checkGo(projectPath: string): Promise<DetectedLanguage | null> {
+  const goModPath = path.join(projectPath, "go.mod");
+  if (!(await fileExists(goModPath))) return null;
+
+  const content = await safeReadFile(goModPath);
+  if (!content) return null;
+
+  // Check for gin or chi imports in go.mod
+  let framework: SupportedFramework = "unknown";
+  if (content.includes("gin-gonic/gin")) framework = "gin";
+  else if (content.includes("go-chi/chi")) framework = "chi";
+
+  return {
+    language: "go",
+    framework,
+    detectedFrom: goModPath,
+    confidence: 0.95,
+  };
 }
 
 // ─── Python ──────────────────────────────────────────────────────────────────

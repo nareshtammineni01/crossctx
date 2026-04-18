@@ -9,7 +9,9 @@ import type {
   PayloadField,
   ServiceUrlHint,
   DetectedLanguage,
+  MessageEvent,
 } from "../types/index.js";
+import { extractMessageEvents } from "./messaging.js";
 
 const IGNORE = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/*.spec.ts", "**/*.test.ts", "**/*.d.ts"];
 
@@ -52,6 +54,9 @@ export async function parseTypeScriptProject(
   // 6. Check for OpenAPI spec
   const specFile = await findOpenApiSpec(projectPath);
 
+  // 7. Extract message events
+  const messageEvents = extractMessageEvents(fileContents, "typescript");
+
   return {
     projectPath,
     language,
@@ -59,6 +64,7 @@ export async function parseTypeScriptProject(
     endpoints,
     dtos: Array.from(dtoMap.values()),
     serviceUrlHints,
+    messageEvents,
     hasOpenApiSpec: !!specFile,
     specFile: specFile ?? undefined,
   };
@@ -291,14 +297,44 @@ function extractResponseFromDecorators(
   decoratorLine: number,
   dtoMap: Map<string, PayloadShape>
 ): PayloadShape | undefined {
-  for (let i = decoratorLine; i < Math.min(decoratorLine + 5, lines.length); i++) {
+  for (let i = decoratorLine; i < Math.min(decoratorLine + 8, lines.length); i++) {
     const line = lines[i];
-    // Promise<UserDto> or : UserDto
-    const returnTypeMatch = line.match(/Promise\s*<\s*(\w+)\s*>|:\s*(\w+)\s*\{/);
-    if (returnTypeMatch) {
-      const typeName = returnTypeMatch[1] ?? returnTypeMatch[2];
-      if (typeName && dtoMap.has(typeName)) return dtoMap.get(typeName)!;
-      if (typeName && typeName !== "void" && typeName !== "any") {
+
+    // 1. Check for @ApiResponse({ type: UserDto }) decorator
+    const apiResponseMatch = line.match(/@ApiResponse\s*\(\s*\{\s*type\s*:\s*(\w+)/);
+    if (apiResponseMatch) {
+      const typeName = apiResponseMatch[1];
+      if (dtoMap.has(typeName)) return dtoMap.get(typeName)!;
+      if (typeName !== "void" && typeName !== "any") {
+        return { typeName, fields: [], source: "dto-class" };
+      }
+    }
+
+    // 2. Match async method return type: async methodName(): Promise<UserDto>
+    const promiseReturnMatch = line.match(/\)\s*:\s*Promise<(\w+)(?:\[\])?\s*>\s*[{]/);
+    if (promiseReturnMatch) {
+      const typeName = promiseReturnMatch[1];
+      if (dtoMap.has(typeName)) return dtoMap.get(typeName)!;
+      if (typeName !== "void" && typeName !== "any") {
+        return { typeName, fields: [], source: "dto-class" };
+      }
+    }
+
+    // 3. Match sync method return type: methodName(): UserDto {
+    const syncReturnMatch = line.match(/\)\s*:\s*(\w+)\s*\{/);
+    if (syncReturnMatch) {
+      const typeName = syncReturnMatch[1];
+      if (typeName === "void" || typeName === "any") continue;
+      if (dtoMap.has(typeName)) return dtoMap.get(typeName)!;
+      return { typeName, fields: [], source: "dto-class" };
+    }
+
+    // 4. Legacy inline Promise<UserDto> (may be on same line as decorator)
+    const inlinePromiseMatch = line.match(/Promise\s*<\s*(\w+)(?:\[\])?\s*>/);
+    if (inlinePromiseMatch) {
+      const typeName = inlinePromiseMatch[1];
+      if (dtoMap.has(typeName)) return dtoMap.get(typeName)!;
+      if (typeName !== "void" && typeName !== "any") {
         return { typeName, fields: [], source: "dto-class" };
       }
     }

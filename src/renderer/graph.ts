@@ -195,6 +195,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 }
 #graph-hint.hidden { opacity: 0; }
 
+/* ── Confidence Legend ── */
+#confidence-legend {
+  position: absolute; bottom: 16px; left: 16px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px;
+  font-size: 11px; color: var(--text-dim);
+  pointer-events: none;
+  display: none;
+  z-index: 5;
+}
+#confidence-legend.visible { display: block; }
+.conf-item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.conf-item:last-child { margin-bottom: 0; }
+.conf-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.conf-dot.high { background: #3fb950; }
+.conf-dot.med { background: #d29922; }
+.conf-dot.low { background: #f85149; }
+
 /* ── Right Panel ── */
 #panel {
   width: var(--panel-w);
@@ -317,6 +335,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
       <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
     </div>
     <div id="graph-hint">Click a service or endpoint to explore · Scroll to zoom · Drag to pan</div>
+    <div id="confidence-legend">
+      <div class="conf-item"><span class="conf-dot high"></span>High confidence (≥90%)</div>
+      <div class="conf-item"><span class="conf-dot med"></span>Medium (70–89%)</div>
+      <div class="conf-item"><span class="conf-dot low"></span>Low (&lt;70%)</div>
+    </div>
   </div>
 
   <!-- Right panel -->
@@ -399,7 +422,12 @@ function buildServiceElements() {
       source: e.fromService,
       target: e.toService,
       label: e.fromEndpoint + ' → ' + e.toService,
-      confidence: e.confidence,
+      fromService: e.fromService,
+      toService: e.toService,
+      confidence: e.confidence ?? 0.5,
+      rawUrl: e.rawUrl,
+      callPattern: e.callPattern ?? '',
+      type: e.type ?? 'sync',
     }
   }));
   return { nodes, edges };
@@ -471,9 +499,30 @@ function buildControllerElements() {
           source: srcNodeId,
           target: tgtNodeId,
           confidence: edge.confidence,
+          type: 'sync',
         });
       }
     });
+  });
+
+  // Add async edges from message queues
+  graphEdges.forEach(edge => {
+    if (edge.type === 'async') {
+      const fromSvc = edge.fromService;
+      const toSvc = edge.toService;
+      const srcNodeId = 'svc::' + fromSvc;
+      const tgtNodeId = 'svc::' + toSvc;
+      const edgeKey = srcNodeId + '→' + tgtNodeId + ':async';
+      if (!edgeMap.has(edgeKey)) {
+        edgeMap.set(edgeKey, {
+          id: 'ce' + edgeMap.size,
+          source: srcNodeId,
+          target: tgtNodeId,
+          confidence: 0.8,
+          type: 'async',
+        });
+      }
+    }
   });
 
   const edges = Array.from(edgeMap.values()).map(d => ({ data: d }));
@@ -527,12 +576,28 @@ const cyStyle = [
     }
   },
   {
+    selector: 'edge[confidence >= 0.9]',
+    style: { 'line-color': '#3fb950', 'target-arrow-color': '#3fb950' }
+  },
+  {
+    selector: 'edge[confidence >= 0.7][confidence < 0.9]',
+    style: { 'line-color': '#d29922', 'target-arrow-color': '#d29922' }
+  },
+  {
+    selector: 'edge[confidence < 0.7]',
+    style: { 'line-color': '#f85149', 'target-arrow-color': '#f85149' }
+  },
+  {
     selector: 'edge.highlighted',
     style: { 'line-color': '#58a6ff', 'target-arrow-color': '#58a6ff', 'width': 2.5, 'opacity': 1, 'z-index': 10 }
   },
   {
     selector: 'edge.dimmed',
     style: { 'opacity': 0.1 }
+  },
+  {
+    selector: 'edge[type="async"]',
+    style: { 'line-style': 'dashed', 'line-color': '#d29922', 'target-arrow-color': '#d29922', 'line-dash-pattern': [4, 4] }
   },
 ];
 
@@ -550,6 +615,11 @@ const cy = cytoscape({
   wheelSensitivity: 0.3,
 });
 
+// Show confidence legend if there are edges
+if (cy.edges().length > 0) {
+  document.getElementById('confidence-legend').classList.add('visible');
+}
+
 // ─── View switcher ─────────────────────────────────────────────────────────────
 function switchView(view) {
   if (view === currentView && !isSingleService) return;
@@ -563,6 +633,15 @@ function switchView(view) {
   const { nodes, edges } = view === 'controller' ? buildControllerElements() : buildServiceElements();
   cy.elements().remove();
   cy.add([...nodes, ...edges]);
+
+  // Update legend visibility
+  const legendEl = document.getElementById('confidence-legend');
+  if (cy.edges().length > 0) {
+    legendEl.classList.add('visible');
+  } else {
+    legendEl.classList.remove('visible');
+  }
+
   cy.layout(view === 'controller'
     ? { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 6000, nodeOverlap: 30, idealEdgeLength: 120, padding: 50 }
     : { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 8000, nodeOverlap: 40, idealEdgeLength: 180, padding: 60 }
@@ -940,6 +1019,38 @@ function selectByLabel(service, endpointLabel) {
   if (ep) selectEndpoint(ep);
 }
 
+// ─── Edge hover tooltip ───────────────────────────────────────────────────────
+let edgeTip = null;
+cy.on('mouseover', 'edge', function(e) {
+  const edge = e.target;
+  const conf = Math.round((edge.data('confidence') ?? 0) * 100);
+  const from = edge.data('fromService') ?? edge.data('from') ?? '';
+  const to = edge.data('toService') ?? edge.data('to') ?? '';
+  const via = edge.data('callPattern') ?? edge.data('rawUrl') ?? '';
+  const confColor = conf >= 90 ? '#3fb950' : conf >= 70 ? '#d29922' : '#f85149';
+
+  const tip = document.createElement('div');
+  tip.id = 'edge-tooltip';
+  tip.style.cssText = 'position:fixed;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#c9d1d9;pointer-events:none;z-index:1000;max-width:200px;word-break:break-word;';
+  let tipContent = '<div style="color:#f0f6fc;margin-bottom:4px;font-weight:600">' + from + ' → ' + to + '</div>';
+  tipContent += '<div>Confidence: <strong style="color:' + confColor + '">' + conf + '%</strong></div>';
+  if (via) tipContent += '<div style="color:#8b949e;margin-top:4px;word-break:break-all">' + via + '</div>';
+  tip.innerHTML = tipContent;
+  document.body.appendChild(tip);
+  edgeTip = tip;
+});
+
+cy.on('mousemove', 'edge', function(e) {
+  if (edgeTip) {
+    edgeTip.style.left = (e.originalEvent.clientX + 12) + 'px';
+    edgeTip.style.top = (e.originalEvent.clientY - 10) + 'px';
+  }
+});
+
+cy.on('mouseout', 'edge', function() {
+  if (edgeTip) { edgeTip.remove(); edgeTip = null; }
+});
+
 // ─── Graph node click ─────────────────────────────────────────────────────────
 cy.on('tap', 'node', function(evt) {
   const nodeId = evt.target.id();
@@ -1119,6 +1230,9 @@ function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[],
     toService: string;
     fromEndpoint: string;
     confidence: number;
+    rawUrl?: string;
+    callPattern?: string;
+    type?: "sync" | "async";
   }> = [];
 
   // From call chains
@@ -1132,7 +1246,48 @@ function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[],
           toService: edge.toService,
           fromEndpoint: edge.from.split(":")[1] ?? "",
           confidence: edge.confidence,
+          rawUrl: (edge as any).rawUrl,
+          callPattern: (edge as any).callPattern,
+          type: "sync",
         });
+      }
+    }
+  }
+
+  // From message queue events (async dependencies)
+  const messageMap = new Map<string, { publishers: Set<string>; subscribers: Set<string> }>();
+  for (const result of scanResults) {
+    const events = result.messageEvents ?? [];
+    for (const event of events) {
+      if (!messageMap.has(event.topic)) {
+        messageMap.set(event.topic, { publishers: new Set(), subscribers: new Set() });
+      }
+      const entry = messageMap.get(event.topic)!;
+      if (event.direction === "publish") {
+        entry.publishers.add(result.serviceName);
+      } else {
+        entry.subscribers.add(result.serviceName);
+      }
+    }
+  }
+
+  // Create async edges between publishers and subscribers
+  for (const [topic, { publishers, subscribers }] of messageMap) {
+    for (const fromService of publishers) {
+      for (const toService of subscribers) {
+        const key = `${fromService}→${toService}:async`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          edges.push({
+            fromService,
+            toService,
+            fromEndpoint: `topic: ${topic}`,
+            confidence: 0.8,
+            rawUrl: topic,
+            callPattern: "message-queue",
+            type: "async",
+          });
+        }
       }
     }
   }
@@ -1147,6 +1302,8 @@ function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[],
         toService: dep.to,
         fromEndpoint: dep.evidence,
         confidence: 0.5,
+        rawUrl: (dep as any).evidence,
+        type: "sync",
       });
     }
   }
@@ -1171,6 +1328,12 @@ function buildEndpointsData(scanResults: CodeScanResult[], output: CrossCtxOutpu
         requestBody: serializePayload(ep.requestBody),
         response: serializePayload(ep.response),
         hasChain: ep.outboundCalls.length > 0,
+        messageEvents: ep.messageEvents?.map((me) => ({
+          topic: me.topic,
+          direction: me.direction,
+          pattern: me.pattern,
+          payloadType: me.payloadType,
+        })) ?? [],
       }))
     );
   }

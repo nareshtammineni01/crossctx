@@ -7,7 +7,7 @@
 // LANGUAGE & FRAMEWORK DETECTION
 // ─────────────────────────────────────────────
 
-export type SupportedLanguage = "typescript" | "java" | "csharp" | "python" | "unknown";
+export type SupportedLanguage = "typescript" | "java" | "csharp" | "python" | "go" | "unknown";
 export type SupportedFramework =
   | "nestjs"
   | "express"
@@ -16,6 +16,8 @@ export type SupportedFramework =
   | "fastapi"
   | "django"
   | "flask"
+  | "gin"
+  | "chi"
   | "unknown";
 
 export interface DetectedLanguage {
@@ -75,6 +77,8 @@ export interface SourceEndpoint {
   line?: number;
   /** Outbound HTTP calls made from this handler */
   outboundCalls: OutboundCall[];
+  /** Message queue events triggered from this handler */
+  messageEvents?: MessageEvent[];
 }
 
 export interface OutboundCall {
@@ -93,6 +97,26 @@ export interface OutboundCall {
   line?: number;
   /** Confidence of service resolution 0-1 */
   confidence: number;
+}
+
+// ─────────────────────────────────────────────
+// MESSAGE QUEUE & ASYNC MESSAGING
+// ─────────────────────────────────────────────
+
+export type MessagePattern = "kafka" | "rabbitmq" | "sqs" | "pubsub" | "redis-pubsub" | "nats";
+
+export interface MessageEvent {
+  /** Topic/queue/exchange name */
+  topic: string;
+  /** "publish" or "subscribe" */
+  direction: "publish" | "subscribe";
+  /** Message broker type */
+  pattern: MessagePattern;
+  /** Payload type if detectable */
+  payloadType?: string;
+  /** Source file and line */
+  sourceFile: string;
+  line?: number;
 }
 
 // ─────────────────────────────────────────────
@@ -155,6 +179,8 @@ export interface CodeScanResult {
   /** Whether an OpenAPI spec was also found (can enrich payload shapes) */
   hasOpenApiSpec: boolean;
   specFile?: string;
+  /** Service-wide message events (e.g. global publishers/subscribers) */
+  messageEvents?: MessageEvent[];
 }
 
 export interface ServiceUrlHint {
@@ -232,4 +258,36 @@ export interface ParsedSpec {
   endpoints: Endpoint[];
   serverUrls: string[];
   referencedUrls: string[];
+}
+
+// ─────────────────────────────────────────────
+// DIFF / BREAKING CHANGE DETECTION
+// ─────────────────────────────────────────────
+
+export interface EndpointDiff {
+  type: "added" | "removed" | "changed";
+  service: string;
+  method: string;
+  path: string;
+  /** For "changed": what changed */
+  changes?: {
+    requestBody?: { before?: string; after?: string };
+    response?: { before?: string; after?: string };
+    removedFields?: string[];
+    addedFields?: string[];
+  };
+}
+
+export interface DiffReport {
+  baseline: string; // path to baseline file
+  scannedAt: string; // ISO timestamp
+  breaking: EndpointDiff[];
+  nonBreaking: EndpointDiff[];
+  summary: {
+    totalBreaking: number;
+    totalNonBreaking: number;
+    removedEndpoints: number;
+    addedEndpoints: number;
+    changedEndpoints: number;
+  };
 }

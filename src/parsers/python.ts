@@ -10,7 +10,9 @@ import type {
   ServiceUrlHint,
   DetectedLanguage,
   SupportedFramework,
+  MessageEvent,
 } from "../types/index.js";
+import { extractMessageEvents } from "./messaging.js";
 
 const IGNORE = [
   "**/__pycache__/**",
@@ -80,6 +82,9 @@ export async function parsePythonProject(
 
   const specFile = await findOpenApiSpec(projectPath);
 
+  // Extract message events
+  const messageEvents = extractMessageEvents(fileContents, "python");
+
   return {
     projectPath,
     language,
@@ -87,6 +92,7 @@ export async function parsePythonProject(
     endpoints,
     dtos: Array.from(dtoMap.values()),
     serviceUrlHints,
+    messageEvents,
     hasOpenApiSpec: !!specFile,
     specFile: specFile ?? undefined,
   };
@@ -222,8 +228,14 @@ function extractFastAPIFileEndpoints(
 }
 
 function extractDecoratorArg(line: string, argName: string): string | undefined {
-  const regex = new RegExp(`${argName}\\s*=\\s*["']([^"']+)["']`);
-  return line.match(regex)?.[1];
+  // Match quoted string: response_model="Foo" or response_model='Foo'
+  const quotedRegex = new RegExp(`${argName}\\s*=\\s*["']([^"']+)["']`);
+  const quotedMatch = line.match(quotedRegex);
+  if (quotedMatch) return quotedMatch[1];
+
+  // Match bare identifier (class reference): response_model=RevenueReport or response_model=List[Foo]
+  const identRegex = new RegExp(`${argName}\\s*=\\s*((?:List|Optional|Set|Dict)\\[[A-Za-z_]\\w*\\]|[A-Za-z_]\\w*)`);
+  return line.match(identRegex)?.[1];
 }
 
 function extractFastAPIRequestBody(
@@ -624,11 +636,15 @@ function extractPythonDTOs(
   const dtoMap = new Map<string, PayloadShape>();
 
   for (const [filePath, content] of fileContents) {
-    if (!isDTOFile(filePath, content)) continue;
+    // Scan ALL .py files, not just those matching isDTOFile heuristics
+    if (!filePath.endsWith(".py")) continue;
 
     const shapes = extractPythonPayloadShapes(content, framework);
     for (const shape of shapes) {
-      if (shape.typeName) dtoMap.set(shape.typeName, shape);
+      // Only add to map if it has fields (avoid empty class skeletons)
+      if (shape.typeName && shape.fields.length > 0) {
+        dtoMap.set(shape.typeName, shape);
+      }
     }
   }
 

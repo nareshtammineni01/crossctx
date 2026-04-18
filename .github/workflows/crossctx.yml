@@ -1,0 +1,81 @@
+name: CrossCtx API Diff
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  api-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install CrossCtx
+        run: npm install -g crossctx
+
+      - name: Scan current branch
+        run: crossctx . --output current.json
+
+      - name: Checkout base branch
+        run: git stash && git checkout ${{ github.base_ref }}
+
+      - name: Scan base branch
+        run: crossctx . --output baseline.json
+
+      - name: Restore PR branch
+        run: git checkout ${{ github.head_ref }} && git stash pop || true
+
+      - name: Run diff
+        id: diff
+        run: |
+          crossctx . --diff baseline.json --output current.json > diff-output.json 2>&1 || true
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          cat diff-output.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const diff = `${{ steps.diff.outputs.diff }}`;
+            let parsed;
+            try { parsed = JSON.parse(diff); } catch(e) { return; }
+
+            const breaking = parsed.breaking || [];
+            const nonBreaking = parsed.nonBreaking || [];
+
+            let body = '## CrossCtx API Diff\n\n';
+
+            if (breaking.length === 0 && nonBreaking.length === 0) {
+              body += '✅ No API changes detected.\n';
+            } else {
+              if (breaking.length > 0) {
+                body += `### ⚠️ Breaking Changes (${breaking.length})\n\n`;
+                for (const d of breaking) {
+                  body += `- **${d.type.toUpperCase()}** \`${d.method} ${d.path}\` (${d.service})\n`;
+                  if (d.changes?.removedFields?.length) {
+                    body += `  - Removed fields: ${d.changes.removedFields.join(', ')}\n`;
+                  }
+                }
+                body += '\n';
+              }
+              if (nonBreaking.length > 0) {
+                body += `### ℹ️ Non-Breaking Changes (${nonBreaking.length})\n\n`;
+                for (const d of nonBreaking) {
+                  body += `- **${d.type.toUpperCase()}** \`${d.method} ${d.path}\` (${d.service})\n`;
+                }
+              }
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });

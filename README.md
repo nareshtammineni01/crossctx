@@ -26,7 +26,7 @@ CrossCtx follows a four-phase pipeline:
 
 1. **Detect** — identifies the language and framework for each project folder (TypeScript/NestJS, Java/Spring Boot, C#/ASP.NET, Python/FastAPI, Django, Flask)
 2. **Parse** — extracts controllers, endpoints, HTTP method, path, request body type, response type, and outbound HTTP calls by reading source code directly — no OpenAPI spec required
-3. **Resolve** — maps outbound calls to their target services using environment variable names, hostnames, URL fragments, and FeignClient annotations
+3. **Resolve** — maps outbound calls to their target services using a five-tier strategy: named clients (FeignClient, IHttpClientFactory, Spring Cloud LoadBalancer) → hostname matching → environment variable heuristics → URL fragment matching → relative path matching. Handles Kubernetes DNS (`service.namespace.svc.cluster.local`), Consul DNS (`service.service.consul`), camelCase field references, and string concatenation patterns across all four languages
 4. **Render** — produces JSON, Markdown, and a self-contained interactive HTML graph
 
 ## Language Support
@@ -70,9 +70,11 @@ crossctx ./order-service ./payment-service ./user-service ./inventory-service -g
 
 The `--graph` output is a single self-contained HTML file — open it in any browser, no server needed.
 
-**Multi-service projects** show services as nodes with edges representing detected cross-service calls. Node size reflects endpoint count. Clicking a node opens a detail panel.
+**Multi-service projects** default to service view — services are graph nodes, edges are detected cross-service calls, node size reflects endpoint count. A **Services / Controllers** toggle in the header switches to controller view, where every controller across all services becomes its own node, color-coded by its parent service. Both views show the same edges derived from call chain data.
 
-**Single-service projects** show controllers as nodes — each controller in your codebase becomes its own bubble, sized by its endpoint count, so you can see the shape of the service at a glance.
+**Single-service projects** automatically show controllers as nodes — each controller becomes its own bubble, sized by endpoint count, so you can see the internal structure at a glance.
+
+**Call chain animation** — click any endpoint that makes outbound calls, then hit **▶ Animate** in the detail panel to watch the call hops step through the graph one edge at a time.
 
 The left sidebar organizes everything as a three-level tree:
 
@@ -182,8 +184,8 @@ CrossCtx generates a single source of truth from the source code itself — cont
 
 ## Roadmap
 
-- **v0.3** — Controller view toggle in graph (multi-service), call chain highlighting
-- **v1.0** — Go and Ruby parser support, GraphQL detection
+- **v0.3** — GraphQL and gRPC detection, payload enrichment (cross-file DTO resolution)
+- **v1.0** — Go and Ruby parser support, HTML report polish (depth visualization, export)
 - **v2.0** — Kafka/RabbitMQ message queue mapping, async call chains
 - **v3.0** — CI/CD integration, breaking change detection in PRs
 - **v4.0** — GitHub Action, web UI

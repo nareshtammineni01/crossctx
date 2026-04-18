@@ -9,7 +9,9 @@ import type {
   PayloadField,
   ServiceUrlHint,
   DetectedLanguage,
+  MessageEvent,
 } from "../types/index.js";
+import { extractMessageEvents } from "./messaging.js";
 
 const IGNORE = [
   "**/bin/**",
@@ -61,6 +63,9 @@ export async function parseCSharpProject(
   // Parse controllers
   const endpoints = extractCSharpEndpoints(fileContents, serviceName, dtoMap);
 
+  // Extract message events
+  const messageEvents = extractMessageEvents(fileContents, "csharp");
+
   // Check for OpenAPI spec
   const specFile = await findOpenApiSpec(projectPath);
 
@@ -71,6 +76,7 @@ export async function parseCSharpProject(
     endpoints,
     dtos: Array.from(dtoMap.values()),
     serviceUrlHints,
+    messageEvents,
     hasOpenApiSpec: !!specFile,
     specFile: specFile ?? undefined,
   };
@@ -219,8 +225,21 @@ function extractCSharpMethodSignature(
     if (sig) {
       returnType = sig[1].trim();
       methodName = sig[2];
-      paramLine = sig[3];
       bodyStartLine = i;
+
+      // If the param list closes on this line, we're done
+      if (line.includes(")")) {
+        paramLine = sig[3];
+      } else {
+        // Multi-line params: collect until closing ")"
+        const paramParts: string[] = [sig[3]];
+        for (let j = i + 1; j < Math.min(i + 12, lines.length); j++) {
+          const pLine = lines[j].trim();
+          paramParts.push(pLine);
+          if (pLine.includes(")")) break;
+        }
+        paramLine = paramParts.join(" ");
+      }
       break;
     }
   }
@@ -352,11 +371,15 @@ function extractCSharpDTOs(fileContents: Map<string, string>): Map<string, Paylo
   const dtoMap = new Map<string, PayloadShape>();
 
   for (const [filePath, content] of fileContents) {
-    if (!isDTOFile(filePath, content)) continue;
+    // Scan ALL .cs files, not just those matching isDTOFile heuristics
+    if (!filePath.endsWith(".cs")) continue;
 
     const shapes = extractCSharpPayloadShapes(content);
     for (const shape of shapes) {
-      if (shape.typeName) dtoMap.set(shape.typeName, shape);
+      // Only add to map if it has fields (avoid empty controller/service class skeletons)
+      if (shape.typeName && shape.fields.length > 0) {
+        dtoMap.set(shape.typeName, shape);
+      }
     }
   }
 
