@@ -1,26 +1,4 @@
-import { writeFile } from "fs/promises";
-import type { CrossCtxOutput, CodeScanResult, CallChain, CallChainNode, SourceEndpoint, PayloadShape } from "../types/index.js";
-
-export async function saveGraph(output: CrossCtxOutput, outputPath: string): Promise<void> {
-  const html = renderGraph(output);
-  await writeFile(outputPath, html, "utf-8");
-}
-
-export function renderGraph(output: CrossCtxOutput): string {
-  const scanResults = output.codeScanResults ?? [];
-  const callChains = output.callChains ?? [];
-
-  // Build graph nodes and edges from code scan results
-  const services = buildServiceNodes(scanResults, output);
-  const graphEdges = buildGraphEdges(callChains, scanResults, output);
-  const endpointsData = buildEndpointsData(scanResults, output);
-
-  // Build controller groupings for sidebar + single-service graph view
-  const controllerGroups = buildControllerGroups(endpointsData);
-
-  const dataJson = JSON.stringify({ services, graphEdges, endpointsData, callChains, controllerGroups }, null, 0);
-
-  return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -256,8 +234,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 .chain-badge-leaf { font-size: 10px; color: var(--green); }
 .chain-badge-cycle { font-size: 10px; color: var(--orange); }
 .chain-badge-unresolved { font-size: 10px; color: var(--text-dim); }
-.chain-play-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--blue); font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-family: inherit; }
-.chain-play-btn:hover { background: rgba(88,166,255,0.15); }
 
 /* ── Empty state ── */
 #empty-state {
@@ -333,7 +309,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script>
 // ─── Data ────────────────────────────────────────────────────────────────────
-const DATA = ${dataJson};
+const DATA = {"services":[{"id":"order-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"payment-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"user-service","endpointCount":0,"language":"unknown","framework":"unknown"},{"id":"inventory-service","endpointCount":6,"language":"java","framework":"spring-boot"},{"id":"notification-service","endpointCount":5,"language":"csharp","framework":"aspnet"},{"id":"analytics-service","endpointCount":5,"language":"python","framework":"fastapi"},{"id":"email-service","endpointCount":6,"language":"python","framework":"django"}],"graphEdges":[{"fromService":"inventory-service","toService":"order-service","fromEndpoint":"GET /api/inventory","confidence":0.85},{"fromService":"inventory-service","toService":"notification-service","fromEndpoint":"GET /api/inventory","confidence":0.7},{"fromService":"notification-service","toService":"user-service","fromEndpoint":"POST /api/notification","confidence":0.85},{"fromService":"notification-service","toService":"order-service","fromEndpoint":"POST /api/notification/stock-reserved","confidence":0.85},{"fromService":"analytics-service","toService":"order-service","fromEndpoint":"GET /api/analytics/revenue","confidence":0.85},{"fromService":"analytics-service","toService":"payment-service","fromEndpoint":"GET /api/analytics/revenue","confidence":0.85},{"fromService":"analytics-service","toService":"user-service","fromEndpoint":"GET /api/analytics/users/{user_id}/activity","confidence":0.85},{"fromService":"email-service","toService":"user-service","fromEndpoint":"POST /api/emails/bulk","confidence":0.85},{"fromService":"email-service","toService":"notification-service","fromEndpoint":"GET /api/emails","confidence":0.85},{"fromService":"order-service","toService":"user-service","fromEndpoint":"Referenced URL: https://user-service.internal:8080","confidence":0.5},{"fromService":"order-service","toService":"payment-service","fromEndpoint":"Referenced URL: https://payment-service.internal:8081","confidence":0.5}],"endpointsData":[{"id":"ep0","service":"inventory-service","method":"GET","path":"/api/inventory","fullPath":"/api/inventory","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":14,"controller":"InventoryController","requestBody":null,"response":null,"hasChain":true},{"id":"ep1","service":"inventory-service","method":"GET","path":"/{sku}","fullPath":"/{sku}","summary":"Get inventory by SKU","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":33,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep2","service":"inventory-service","method":"GET","path":"/","fullPath":"/","summary":"List all inventory items","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":43,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep3","service":"inventory-service","method":"POST","path":"/reserve","fullPath":"/reserve","summary":"Reserve stock for an order","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":53,"controller":"InventoryController","requestBody":{"typeName":"ReserveStockRequest","fields":[{"name":"orderId","type":"string","required":false},{"name":"sku","type":"string","required":false},{"name":"quantity","type":"integer","required":false}],"source":"dto-class"},"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":true},{"id":"ep4","service":"inventory-service","method":"PUT","path":"/{sku}/quantity","fullPath":"/{sku}/quantity","summary":"Update inventory quantity","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":75,"controller":"InventoryController","requestBody":null,"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep5","service":"inventory-service","method":"DELETE","path":"/reserve/{reservationId}","fullPath":"/reserve/{reservationId}","summary":"Release reserved stock","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/inventory-service/src/main/java/com/example/inventory/controller/InventoryController.java","line":87,"controller":"InventoryController","requestBody":null,"response":{"typeName":"Void","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep6","service":"notification-service","method":"POST","path":"/","fullPath":"/api/notification","summary":"Send a notification to a user","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":21,"controller":"NotificationController","requestBody":{"typeName":"SendNotificationRequest","fields":[{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"OrderId","type":"string","required":false},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep7","service":"notification-service","method":"POST","path":"stock-reserved","fullPath":"/api/notification/stock-reserved","summary":"Handle stock reserved event — notify user their order is confirmed","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":39,"controller":"NotificationController","requestBody":{"typeName":"StockReservedEvent","fields":[{"name":"OrderId","type":"string","required":true},{"name":"Sku","type":"string","required":true},{"name":"Quantity","type":"integer","required":true}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":true},{"id":"ep8","service":"notification-service","method":"GET","path":"user/{userId}","fullPath":"/api/notification/user/{userId}","summary":"Get all notifications for a user","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":57,"controller":"NotificationController","requestBody":null,"response":{"typeName":"NotificationDto","fields":[{"name":"Id","type":"uuid","required":true},{"name":"UserId","type":"string","required":true},{"name":"Type","type":"string","required":true},{"name":"Message","type":"string","required":true},{"name":"Status","type":"string","required":true},{"name":"SentAt","type":"datetime","required":true},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"hasChain":false},{"id":"ep9","service":"notification-service","method":"GET","path":"{id}","fullPath":"/api/notification/{id}","summary":"Get a notification by ID","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":64,"controller":"NotificationController","requestBody":null,"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"hasChain":false},{"id":"ep10","service":"notification-service","method":"DELETE","path":"{id}","fullPath":"/api/notification/{id}","summary":"Delete a notification","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/notification-service/Controllers/NotificationController.cs","line":71,"controller":"NotificationController","requestBody":null,"response":null,"hasChain":false},{"id":"ep11","service":"analytics-service","method":"GET","path":"/revenue","fullPath":"/api/analytics/revenue","summary":"Get revenue report for a given period.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":17,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep12","service":"analytics-service","method":"GET","path":"/users/{user_id}/activity","fullPath":"/api/analytics/users/{user_id}/activity","summary":"Get activity report for a specific user.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":34,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep13","service":"analytics-service","method":"POST","path":"/events","fullPath":"/api/analytics/events","summary":"Track a custom analytics event.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":50,"controller":"analytics","requestBody":{"typeName":"TrackEventRequest","fields":[{"name":"event_type","type":"string","required":true},{"name":"user_id","type":"string","required":false},{"name":"order_id","type":"string","required":false},{"name":"metadata","type":"object","required":false}],"source":"dto-class"},"response":null,"hasChain":false},{"id":"ep14","service":"analytics-service","method":"GET","path":"/dashboard","fullPath":"/api/analytics/dashboard","summary":"Get a full dashboard summary.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":56,"controller":"analytics","requestBody":null,"response":null,"hasChain":true},{"id":"ep15","service":"analytics-service","method":"DELETE","path":"/events/{event_id}","fullPath":"/api/analytics/events/{event_id}","summary":"Delete a tracked event.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/analytics-service/app/routers/analytics.py","line":75,"controller":"analytics","requestBody":null,"response":null,"hasChain":false},{"id":"ep16","service":"email-service","method":"POST","path":"/api/emails/bulk","fullPath":"/api/emails/bulk","summary":"Send the same email to multiple recipients.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":63,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":true},{"id":"ep17","service":"email-service","method":"GET","path":"/api/emails/templates","fullPath":"/api/emails/templates","summary":"List available email templates.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":80,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep18","service":"email-service","method":"GET","path":"/api/emails","fullPath":"/api/emails","summary":"Send a transactional email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":21,"controller":"email_Controller","requestBody":{"typeName":"SendEmailSerializer","fields":[{"name":"to_email","type":"email","required":true},{"name":"subject","type":"char","required":true},{"name":"body","type":"char","required":true},{"name":"template","type":"char","required":false},{"name":"order_id","type":"char","required":false},{"name":"user_id","type":"char","required":false}],"source":"dto-class"},"response":null,"hasChain":true},{"id":"ep19","service":"email-service","method":"POST","path":"/api/emails","fullPath":"/api/emails","summary":"Send a transactional email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":25,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep20","service":"email-service","method":"GET","path":"/api/emails/{id}","fullPath":"/api/emails/{id}","summary":"Cancel a queued email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":53,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false},{"id":"ep21","service":"email-service","method":"DELETE","path":"/api/emails/{id}","fullPath":"/api/emails/{id}","summary":"Cancel a queued email.","sourceFile":"/sessions/epic-modest-einstein/mnt/ServiceMap Project/examples/email-service/email_app/views/email_views.py","line":58,"controller":"email_Controller","requestBody":null,"response":null,"hasChain":false}],"callChains":[{"rootService":"inventory-service","rootEndpoint":"GET /api/inventory","tree":{"service":"inventory-service","endpoint":"GET /api/inventory","fullPath":"/api/inventory","calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"notification-service","endpoint":"POST /api/notifications/stock-reserved","fullPath":"/api/notifications/stock-reserved","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"POST /api/orders/reservation-released","fullPath":"/api/orders/reservation-released","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:GET /api/inventory","to":"order-service:GET /api/orders/","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/","confidence":0.85},{"from":"inventory-service:GET /api/inventory","to":"notification-service:POST /api/notifications/stock-reserved","fromService":"inventory-service","toService":"notification-service","rawUrl":"notificationServiceUrl + \"/api/notifications/stock-reserved","confidence":0.7}]},{"rootService":"inventory-service","rootEndpoint":"POST /reserve","tree":{"service":"inventory-service","endpoint":"POST /reserve","fullPath":"/reserve","requestBody":{"typeName":"ReserveStockRequest","fields":[{"name":"orderId","type":"string","required":false},{"name":"sku","type":"string","required":false},{"name":"quantity","type":"integer","required":false}],"source":"dto-class"},"response":{"typeName":"InventoryDto","fields":[{"name":"id","type":"long","required":false},{"name":"sku","type":"string","required":false},{"name":"productName","type":"string","required":false},{"name":"quantity","type":"integer","required":false},{"name":"warehouseId","type":"string","required":false},{"name":"available","type":"boolean","required":false}],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"notification-service","endpoint":"POST /api/notifications/stock-reserved","fullPath":"/api/notifications/stock-reserved","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:POST /reserve","to":"order-service:GET /api/orders/","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/","confidence":0.85},{"from":"inventory-service:POST /reserve","to":"notification-service:POST /api/notifications/stock-reserved","fromService":"inventory-service","toService":"notification-service","rawUrl":"notificationServiceUrl + \"/api/notifications/stock-reserved","confidence":0.7}]},{"rootService":"inventory-service","rootEndpoint":"DELETE /reserve/{reservationId}","tree":{"service":"inventory-service","endpoint":"DELETE /reserve/{reservationId}","fullPath":"/reserve/{reservationId}","response":{"typeName":"Void","fields":[],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"POST /api/orders/reservation-released","fullPath":"/api/orders/reservation-released","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"inventory-service:DELETE /reserve/{reservationId}","to":"order-service:POST /api/orders/reservation-released","fromService":"inventory-service","toService":"order-service","rawUrl":"orderServiceUrl + \"/api/orders/reservation-released","confidence":0.85}]},{"rootService":"notification-service","rootEndpoint":"POST /api/notification","tree":{"service":"notification-service","endpoint":"POST /api/notification","fullPath":"/api/notification","requestBody":{"typeName":"SendNotificationRequest","fields":[{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"string","type":"[Required]","required":true},{"name":"OrderId","type":"string","required":false},{"name":"Channel","type":"string","required":false}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"calls":[{"service":"user-service","endpoint":"GET /api/users/","fullPath":"/api/users/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET user-service","fullPath":"user-service","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"notification-service:POST /api/notification","to":"user-service:GET /api/users/","fromService":"notification-service","toService":"user-service","rawUrl":"${userServiceUrl}/api/users/{request.UserId}","confidence":0.85}]},{"rootService":"notification-service","rootEndpoint":"POST /api/notification/stock-reserved","tree":{"service":"notification-service","endpoint":"POST /api/notification/stock-reserved","fullPath":"/api/notification/stock-reserved","requestBody":{"typeName":"StockReservedEvent","fields":[{"name":"OrderId","type":"string","required":true},{"name":"Sku","type":"string","required":true},{"name":"Quantity","type":"integer","required":true}],"source":"dto-class"},"response":{"typeName":"NotificationDto>","fields":[],"source":"dto-class"},"calls":[{"service":"order-service","endpoint":"GET /api/orders/","fullPath":"/api/orders/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET /api/users/by-order/","fullPath":"/api/users/by-order/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"GET order-service","fullPath":"order-service","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET user-service","fullPath":"user-service","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"notification-service:POST /api/notification/stock-reserved","to":"order-service:GET /api/orders/","fromService":"notification-service","toService":"order-service","rawUrl":"${orderServiceUrl}/api/orders/{evt.OrderId}","confidence":0.85},{"from":"notification-service:POST /api/notification/stock-reserved","to":"user-service:GET /api/users/by-order/","fromService":"notification-service","toService":"user-service","rawUrl":"${userServiceUrl}/api/users/by-order/{evt.OrderId}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/revenue","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/revenue","fullPath":"/api/analytics/revenue","calls":[{"service":"order-service","endpoint":"GET /api/orders","fullPath":"/api/orders","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"payment-service","endpoint":"GET /api/payments","fullPath":"/api/payments","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/revenue","to":"order-service:GET /api/orders","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders?period={period}","confidence":0.85},{"from":"analytics-service:GET /api/analytics/revenue","to":"payment-service:GET /api/payments","fromService":"analytics-service","toService":"payment-service","rawUrl":"{PAYMENT_SERVICE_URL}/api/payments?period={period}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/users/{user_id}/activity","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/users/{user_id}/activity","fullPath":"/api/analytics/users/{user_id}/activity","calls":[{"service":"user-service","endpoint":"GET /api/users/","fullPath":"/api/users/","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"order-service","endpoint":"GET /api/orders","fullPath":"/api/orders","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/users/{user_id}/activity","to":"user-service:GET /api/users/","fromService":"analytics-service","toService":"user-service","rawUrl":"{USER_SERVICE_URL}/api/users/{user_id}","confidence":0.85},{"from":"analytics-service:GET /api/analytics/users/{user_id}/activity","to":"order-service:GET /api/orders","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders?user_id={user_id}","confidence":0.85}]},{"rootService":"analytics-service","rootEndpoint":"GET /api/analytics/dashboard","tree":{"service":"analytics-service","endpoint":"GET /api/analytics/dashboard","fullPath":"/api/analytics/dashboard","calls":[{"service":"order-service","endpoint":"GET /api/orders/summary","fullPath":"/api/orders/summary","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"user-service","endpoint":"GET /api/users/active-count","fullPath":"/api/users/active-count","calls":[],"isLeaf":true,"isUnresolved":false},{"service":"payment-service","endpoint":"GET /api/payments/summary","fullPath":"/api/payments/summary","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"analytics-service:GET /api/analytics/dashboard","to":"order-service:GET /api/orders/summary","fromService":"analytics-service","toService":"order-service","rawUrl":"{ORDER_SERVICE_URL}/api/orders/summary","confidence":0.85},{"from":"analytics-service:GET /api/analytics/dashboard","to":"user-service:GET /api/users/active-count","fromService":"analytics-service","toService":"user-service","rawUrl":"{USER_SERVICE_URL}/api/users/active-count","confidence":0.85},{"from":"analytics-service:GET /api/analytics/dashboard","to":"payment-service:GET /api/payments/summary","fromService":"analytics-service","toService":"payment-service","rawUrl":"{PAYMENT_SERVICE_URL}/api/payments/summary","confidence":0.85}]},{"rootService":"email-service","rootEndpoint":"POST /api/emails/bulk","tree":{"service":"email-service","endpoint":"POST /api/emails/bulk","fullPath":"/api/emails/bulk","calls":[{"service":"user-service","endpoint":"POST /api/users/validate-bulk","fullPath":"/api/users/validate-bulk","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"email-service:POST /api/emails/bulk","to":"user-service:POST /api/users/validate-bulk","fromService":"email-service","toService":"user-service","rawUrl":"USER_SERVICE_URL + \"/api/users/validate-bulk","confidence":0.85}]},{"rootService":"email-service","rootEndpoint":"GET /api/emails","tree":{"service":"email-service","endpoint":"GET /api/emails","fullPath":"/api/emails","requestBody":{"typeName":"SendEmailSerializer","fields":[{"name":"to_email","type":"email","required":true},{"name":"subject","type":"char","required":true},{"name":"body","type":"char","required":true},{"name":"template","type":"char","required":false},{"name":"order_id","type":"char","required":false},{"name":"user_id","type":"char","required":false}],"source":"dto-class"},"calls":[{"service":"notification-service","endpoint":"POST /api/notifications","fullPath":"/api/notifications","calls":[],"isLeaf":true,"isUnresolved":false}],"isLeaf":false},"edges":[{"from":"email-service:GET /api/emails","to":"notification-service:POST /api/notifications","fromService":"email-service","toService":"notification-service","rawUrl":"NOTIFICATION_SERVICE_URL + \"/api/notifications","confidence":0.85}]}],"controllerGroups":{"inventory-service":[{"name":"InventoryController","endpoints":["ep0","ep1","ep2","ep3","ep4","ep5"]}],"notification-service":[{"name":"NotificationController","endpoints":["ep6","ep7","ep8","ep9","ep10"]}],"analytics-service":[{"name":"analytics","endpoints":["ep11","ep12","ep13","ep14","ep15"]}],"email-service":[{"name":"email_Controller","endpoints":["ep16","ep17","ep18","ep19","ep20","ep21"]}]}};
 const { services, graphEdges, endpointsData, callChains, controllerGroups } = DATA;
 
 const SERVICE_COLORS = [
@@ -608,12 +584,12 @@ function buildSidebar(filter = '') {
     // Service header
     const header = document.createElement('div');
     header.className = 'service-header' + (filter || services.length === 1 ? ' open' : '');
-    header.innerHTML = \`
-      <div class="svc-dot" style="background:\${colorMap[svc.id]}"></div>
-      <span class="svc-name">\${svc.id}</span>
-      <span class="svc-badge">\${visibleEps.length}</span>
+    header.innerHTML = `
+      <div class="svc-dot" style="background:${colorMap[svc.id]}"></div>
+      <span class="svc-name">${svc.id}</span>
+      <span class="svc-badge">${visibleEps.length}</span>
       <span class="svc-chevron">▶</span>
-    \`;
+    `;
     header.addEventListener('click', () => {
       header.classList.toggle('open');
       if (currentView === "service") highlightService(svc.id);
@@ -641,12 +617,12 @@ function buildSidebar(filter = '') {
 
         const ctrlHeader = document.createElement('div');
         ctrlHeader.className = 'ctrl-header' + (filter ? ' open' : '');
-        ctrlHeader.innerHTML = \`
-          <div class="svc-dot" style="background:\${ctrlColor}; width:8px; height:8px; flex-shrink:0"></div>
-          <span class="ctrl-name">\${ctrl.name.replace('Controller', '')}</span>
-          <span class="ctrl-badge">\${displayEps.length}</span>
+        ctrlHeader.innerHTML = `
+          <div class="svc-dot" style="background:${ctrlColor}; width:8px; height:8px; flex-shrink:0"></div>
+          <span class="ctrl-name">${ctrl.name.replace('Controller', '')}</span>
+          <span class="ctrl-badge">${displayEps.length}</span>
           <span class="ctrl-chevron">▶</span>
-        \`;
+        `;
         ctrlHeader.addEventListener('click', (e) => {
           e.stopPropagation();
           ctrlHeader.classList.toggle('open');
@@ -671,11 +647,11 @@ function buildSidebar(filter = '') {
           const item = document.createElement('div');
           item.className = 'endpoint-item';
           item.dataset.epId = ep.id;
-          item.innerHTML = \`
-            <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-            <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-            \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
-          \`;
+          item.innerHTML = `
+            <span class="method-badge method-${ep.method}">${ep.method}</span>
+            <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+            ${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+          `;
           item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
           ctrlEpList.appendChild(item);
         });
@@ -691,11 +667,11 @@ function buildSidebar(filter = '') {
         item.className = 'endpoint-item';
         item.dataset.epId = ep.id;
         item.style.paddingLeft = '30px';
-        item.innerHTML = \`
-          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-          \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
-        \`;
+        item.innerHTML = `
+          <span class="method-badge method-${ep.method}">${ep.method}</span>
+          <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+          ${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+        `;
         item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
         epList.appendChild(item);
       });
@@ -747,29 +723,17 @@ function highlightChain(chainEdges) {
   resetGraph();
   if (!chainEdges || chainEdges.length === 0) return;
 
-  const involvedServices = new Set();
-  chainEdges.forEach(e => { involvedServices.add(e.fromService); involvedServices.add(e.toService); });
+  const involvedIds = new Set();
+  chainEdges.forEach(e => { involvedIds.add(e.fromService); involvedIds.add(e.toService); });
 
   cy.elements().forEach(el => {
     if (el.isNode()) {
-      // In service view: match by service ID
-      // In controller view: match if node belongs to an involved service
-      const nid = el.id();
-      const nSvc = el.data('serviceId') || nid;
-      const inChain = involvedServices.has(nid) || involvedServices.has(nSvc) ||
-        (nid.startsWith('svc::') && involvedServices.has(nid.slice(5)));
-      if (inChain) el.addClass('highlighted');
+      if (involvedIds.has(el.id())) el.addClass('highlighted');
       else el.addClass('dimmed');
     }
     if (el.isEdge()) {
       const src = el.data('source'), tgt = el.data('target');
-      const srcSvc = cy.$('#' + src).data('serviceId') || src;
-      const tgtSvc = cy.$('#' + tgt).data('serviceId') || tgt;
-      // Match edge if it connects services/controllers in the chain
-      const isInChain = chainEdges.some(e =>
-        (e.fromService === src && e.toService === tgt) ||
-        (e.fromService === srcSvc && e.toService === tgtSvc)
-      );
+      const isInChain = chainEdges.some(e => e.fromService === src && e.toService === tgt);
       if (isInChain) el.addClass('highlighted');
       else el.addClass('dimmed');
     }
@@ -777,37 +741,6 @@ function highlightChain(chainEdges) {
 
   const highlighted = cy.$('.highlighted');
   if (highlighted.length) cy.animate({ fit: { eles: highlighted, padding: 80 }, duration: 300 });
-}
-
-// Animate through call chain hops step by step
-function animateChainHops(chainEdges) {
-  if (!chainEdges || chainEdges.length === 0) return;
-  resetGraph();
-
-  let step = 0;
-  function showStep() {
-    if (step >= chainEdges.length) {
-      // All hops shown — keep final state
-      return;
-    }
-    const edge = chainEdges[step];
-    // Find and highlight the edge on the graph
-    cy.edges().forEach(el => {
-      const src = el.data('source'), tgt = el.data('target');
-      const srcSvc = cy.$('#' + src).data('serviceId') || src;
-      const tgtSvc = cy.$('#' + tgt).data('serviceId') || tgt;
-      if ((edge.fromService === src && edge.toService === tgt) ||
-          (edge.fromService === srcSvc && edge.toService === tgtSvc)) {
-        el.addClass('highlighted');
-        el.removeClass('dimmed');
-        // Dim the edge temporarily with a flash
-        el.animate({ style: { 'width': 4 } }, { duration: 200, complete: () => el.animate({ style: { 'width': 2.5 } }, { duration: 200 }) });
-      }
-    });
-    step++;
-    setTimeout(showStep, 500);
-  }
-  showStep();
 }
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
@@ -838,47 +771,42 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
 function selectEndpoint(ep) {
   // Deselect previous
   document.querySelectorAll('.endpoint-item.selected').forEach(el => el.classList.remove('selected'));
-  const el = document.querySelector(\`[data-ep-id="\${ep.id}"]\`);
+  const el = document.querySelector(`[data-ep-id="${ep.id}"]`);
   if (el) el.classList.add('selected');
 
   // Build panel content
   const color = colorMap[ep.service] || '#58a6ff';
-  const svcDot = \`<div class="svc-dot" style="background:\${color}"></div>\`;
+  const svcDot = `<div class="svc-dot" style="background:${color}"></div>`;
   let html = '';
 
   // Service info
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Service</div>
-    <div class="panel-service">\${svcDot}<span class="panel-service-name">\${ep.service}</span></div>
-    <div class="panel-path">\${ep.fullPath || ep.path}</div>
-    \${ep.summary ? \`<div class="panel-summary">\${ep.summary}</div>\` : ''}
-    \${ep.sourceFile ? \`<div class="panel-source">\${ep.sourceFile.split('/').slice(-2).join('/')}\${ep.line ? ':' + ep.line : ''}</div>\` : ''}
-  </div>\`;
+    <div class="panel-service">${svcDot}<span class="panel-service-name">${ep.service}</span></div>
+    <div class="panel-path">${ep.fullPath || ep.path}</div>
+    ${ep.summary ? `<div class="panel-summary">${ep.summary}</div>` : ''}
+    ${ep.sourceFile ? `<div class="panel-source">${ep.sourceFile.split('/').slice(-2).join('/')}${ep.line ? ':' + ep.line : ''}</div>` : ''}
+  </div>`;
 
   // Request body
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Request Body</div>
-    \${renderPayload(ep.requestBody)}
-  </div>\`;
+    ${renderPayload(ep.requestBody)}
+  </div>`;
 
   // Response
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Response</div>
-    \${renderPayload(ep.response)}
-  </div>\`;
+    ${renderPayload(ep.response)}
+  </div>`;
 
   // Call chain
   const chains = callChains.filter(c => c.rootService === ep.service && c.rootEndpoint === ep.method + ' ' + (ep.fullPath || ep.path));
   if (chains.length > 0) {
-    const safeService = ep.service.replace(/'/g, "\\'");
-    const safeEndpoint = (ep.method + ' ' + (ep.fullPath || ep.path)).replace(/'/g, "\\'");
-    html += \`<div class="panel-section">
-      <div class="panel-section-title" style="display:flex;align-items:center;justify-content:space-between">
-        <span>Call Chain</span>
-        <button class="chain-play-btn" onclick="(function(){const ch=DATA.callChains.find(c=>c.rootService==='\${safeService}'&&c.rootEndpoint==='\${safeEndpoint}');if(ch)animateChainHops(ch.edges);})()" title="Animate call hops on graph">▶ Animate</button>
-      </div>
-      <div class="chain-tree">\${renderChainNode(chains[0].tree, 0)}</div>
-    </div>\`;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Call Chain</div>
+      <div class="chain-tree">${renderChainNode(chains[0].tree, 0)}</div>
+    </div>`;
     highlightChain(chains[0].edges);
   } else {
     // Highlight service on graph
@@ -894,16 +822,16 @@ function renderPayload(payload) {
   if (fields.length === 0 && !payload.typeName) return '<div class="no-payload">Not documented</div>';
 
   let html = '<div class="payload-box">';
-  if (payload.typeName) html += \`<div class="payload-type-name">\${payload.typeName}</div>\`;
+  if (payload.typeName) html += `<div class="payload-type-name">${payload.typeName}</div>`;
   if (fields.length === 0) {
     html += '<div class="no-payload" style="margin:0">Fields unknown</div>';
   } else {
     fields.forEach(f => {
-      html += \`<div class="payload-field">
-        <span class="field-name">\${f.name}</span>
-        <span class="field-type">\${f.type}</span>
-        \${f.required ? '<span class="field-req">*</span>' : ''}
-      </div>\`;
+      html += `<div class="payload-field">
+        <span class="field-name">${f.name}</span>
+        <span class="field-type">${f.type}</span>
+        ${f.required ? '<span class="field-req">*</span>' : ''}
+      </div>`;
     });
   }
   html += '</div>';
@@ -917,14 +845,14 @@ function renderChainNode(node, depth) {
   const cycleBadge = node.isCycle ? '<span class="chain-badge-cycle">↺ cycle</span>' : '';
   const unresBadge = node.isUnresolved ? '<span class="chain-badge-unresolved">? unresolved</span>' : '';
 
-  let html = \`<div class="chain-node \${indent}">
-    \${depth > 0 ? \`<span class="chain-connector">\${connector}</span>\` : ''}
+  let html = `<div class="chain-node ${indent}">
+    ${depth > 0 ? `<span class="chain-connector">${connector}</span>` : ''}
     <div>
-      <span class="chain-svc">\${node.service} · </span>
-      <span class="chain-ep" onclick="selectByLabel('\${node.service}', '\${node.endpoint}')">\${node.endpoint}</span>
-      \${leafBadge}\${cycleBadge}\${unresBadge}
+      <span class="chain-svc">${node.service} · </span>
+      <span class="chain-ep" onclick="selectByLabel('${node.service}', '${node.endpoint}')">${node.endpoint}</span>
+      ${leafBadge}${cycleBadge}${unresBadge}
     </div>
-  </div>\`;
+  </div>`;
 
   if (node.calls && node.calls.length > 0) {
     node.calls.forEach(child => { html += renderChainNode(child, depth + 1); });
@@ -968,19 +896,19 @@ cy.on('tap', 'node', function(evt) {
       }
     });
 
-    let html = \`<div class="panel-section">
+    let html = `<div class="panel-section">
       <div class="panel-section-title">Controller</div>
-      <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${ctrlName}</span></div>
-      <div class="panel-summary" style="margin-top:4px">\${svcId} · \${ctrlEndpoints.length} endpoints</div>
-    </div>\`;
+      <div class="panel-service"><div class="svc-dot" style="background:${color}"></div><span class="panel-service-name">${ctrlName}</span></div>
+      <div class="panel-summary" style="margin-top:4px">${svcId} · ${ctrlEndpoints.length} endpoints</div>
+    </div>`;
 
-    html += \`<div class="panel-section">
-      <div class="panel-section-title">Endpoints (\${ctrlEndpoints.length})</div>\`;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Endpoints (${ctrlEndpoints.length})</div>`;
     ctrlEndpoints.forEach(ep => {
-      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-      </div>\`;
+      html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+        <span class="method-badge method-${ep.method}">${ep.method}</span>
+        <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+      </div>`;
     });
     html += '</div>';
 
@@ -998,11 +926,11 @@ cy.on('tap', 'node', function(evt) {
   const color = colorMap[svcId];
   const svcEndpoints = endpointsData.filter(ep => ep.service === svcId);
 
-  let html = \`<div class="panel-section">
+  let html = `<div class="panel-section">
     <div class="panel-section-title">Service</div>
-    <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${svcId}</span></div>
-    <div class="panel-summary">\${svc.language} · \${svc.framework}</div>
-  </div>\`;
+    <div class="panel-service"><div class="svc-dot" style="background:${color}"></div><span class="panel-service-name">${svcId}</span></div>
+    <div class="panel-summary">${svc.language} · ${svc.framework}</div>
+  </div>`;
 
   // Group by controller in the panel too
   const ctrls = (controllerGroups && controllerGroups[svcId]) || [];
@@ -1010,24 +938,24 @@ cy.on('tap', 'node', function(evt) {
     ctrls.forEach(ctrl => {
       const ctrlEps = svcEndpoints.filter(ep => ep.controller === ctrl.name);
       if (ctrlEps.length === 0) return;
-      html += \`<div class="panel-section">
-        <div class="panel-section-title">\${ctrl.name} (\${ctrlEps.length})</div>\`;
+      html += `<div class="panel-section">
+        <div class="panel-section-title">${ctrl.name} (${ctrlEps.length})</div>`;
       ctrlEps.forEach(ep => {
-        html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-        </div>\`;
+        html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+          <span class="method-badge method-${ep.method}">${ep.method}</span>
+          <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+        </div>`;
       });
       html += '</div>';
     });
   } else {
-    html += \`<div class="panel-section">
-      <div class="panel-section-title">Endpoints (\${svcEndpoints.length})</div>\`;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Endpoints (${svcEndpoints.length})</div>`;
     svcEndpoints.forEach(ep => {
-      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-      </div>\`;
+      html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+        <span class="method-badge method-${ep.method}">${ep.method}</span>
+        <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+      </div>`;
     });
     html += '</div>';
   }
@@ -1051,171 +979,4 @@ setTimeout(() => document.getElementById('graph-hint').classList.add('hidden'), 
 if (services.length === 0) document.getElementById('empty-state').style.display = 'block';
 </script>
 </body>
-</html>`;
-}
-
-// ─── Data builders ────────────────────────────────────────────────────────────
-
-// ─── Controller group builder ────────────────────────────────────────────────
-
-function deriveControllerName(sourceFile: string | undefined): string {
-  if (!sourceFile) return "Other";
-  // Match ClassName.java / ClassName.ts / ClassName.cs / ClassName.py
-  const m = sourceFile.match(/([A-Za-z0-9_]+)(?:Controller|Router|Views?|Resource)[\w]*\.(java|ts|cs|py|kt)$/i);
-  if (m) return m[1] + "Controller";
-  // Fallback: just use the filename without extension
-  const base = sourceFile.replace(/\\/g, "/").split("/").pop() ?? "Other";
-  return base.replace(/\.\w+$/, "");
-}
-
-function buildControllerGroups(endpointsData: ReturnType<typeof buildEndpointsData>) {
-  // Map: serviceId → Array<{ name: string, endpoints: string[] }>
-  const result: Record<string, Array<{ name: string; endpoints: string[] }>> = {};
-
-  for (const ep of endpointsData) {
-    const svc = ep.service;
-    if (!result[svc]) result[svc] = [];
-
-    const ctrlName = (ep as { controller?: string }).controller || "Other";
-    let ctrl = result[svc].find(c => c.name === ctrlName);
-    if (!ctrl) {
-      ctrl = { name: ctrlName, endpoints: [] };
-      result[svc].push(ctrl);
-    }
-    ctrl.endpoints.push(ep.id);
-  }
-
-  // Sort controllers alphabetically per service
-  for (const svc of Object.keys(result)) {
-    result[svc].sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  return result;
-}
-
-function buildServiceNodes(scanResults: CodeScanResult[], output: CrossCtxOutput) {
-  // Prefer code scan results; fall back to OpenAPI services
-  if (scanResults.length > 0) {
-    return scanResults.map((r) => ({
-      id: r.serviceName,
-      endpointCount: r.endpoints.length,
-      language: r.language.language,
-      framework: r.language.framework,
-    }));
-  }
-
-  return output.services.map((s) => ({
-    id: s.name,
-    endpointCount: s.endpointCount,
-    language: "unknown",
-    framework: "unknown",
-  }));
-}
-
-function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[], output: CrossCtxOutput) {
-  const seen = new Set<string>();
-  const edges: Array<{
-    fromService: string;
-    toService: string;
-    fromEndpoint: string;
-    confidence: number;
-  }> = [];
-
-  // From call chains
-  for (const chain of callChains) {
-    for (const edge of chain.edges) {
-      const key = `${edge.fromService}→${edge.toService}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        edges.push({
-          fromService: edge.fromService,
-          toService: edge.toService,
-          fromEndpoint: edge.from.split(":")[1] ?? "",
-          confidence: edge.confidence,
-        });
-      }
-    }
-  }
-
-  // From legacy OpenAPI dependencies
-  for (const dep of output.dependencies) {
-    const key = `${dep.from}→${dep.to}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      edges.push({
-        fromService: dep.from,
-        toService: dep.to,
-        fromEndpoint: dep.evidence,
-        confidence: 0.5,
-      });
-    }
-  }
-
-  return edges;
-}
-
-function buildEndpointsData(scanResults: CodeScanResult[], output: CrossCtxOutput) {
-  if (scanResults.length > 0) {
-    let idx = 0;
-    return scanResults.flatMap((r) =>
-      r.endpoints.map((ep) => ({
-        id: `ep${idx++}`,
-        service: r.serviceName,
-        method: ep.method,
-        path: ep.path,
-        fullPath: ep.fullPath,
-        summary: ep.summary,
-        sourceFile: ep.sourceFile,
-        line: ep.line,
-        controller: deriveControllerName(ep.sourceFile),
-        requestBody: serializePayload(ep.requestBody),
-        response: serializePayload(ep.response),
-        hasChain: ep.outboundCalls.length > 0,
-      }))
-    );
-  }
-
-  // Fall back to OpenAPI endpoints
-  return output.endpoints.map((ep, i) => ({
-    id: `ep${i}`,
-    service: ep.service,
-    method: ep.method,
-    path: ep.path,
-    fullPath: ep.path,
-    summary: ep.summary,
-    sourceFile: undefined,
-    line: undefined,
-    requestBody: ep.requestBody
-      ? {
-          typeName: undefined,
-          fields: Object.entries(ep.requestBody.properties ?? {}).map(([name, type]) => ({
-            name,
-            type,
-            required: true,
-          })),
-          source: "openapi",
-        }
-      : null,
-    response: ep.response
-      ? {
-          typeName: undefined,
-          fields: Object.entries(ep.response.properties ?? {}).map(([name, type]) => ({
-            name,
-            type,
-            required: false,
-          })),
-          source: "openapi",
-        }
-      : null,
-    hasChain: false,
-  }));
-}
-
-function serializePayload(payload: import("../types/index.js").PayloadShape | undefined) {
-  if (!payload) return null;
-  return {
-    typeName: payload.typeName,
-    fields: payload.fields,
-    source: payload.source,
-  };
-}
+</html>
