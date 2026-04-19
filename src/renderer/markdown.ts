@@ -86,7 +86,9 @@ export function renderMarkdown(output: CrossCtxOutput): string {
               .map(([k, v]) => `${k}: ${v}`)
               .join(", ")
           : ep.response.type;
-        lines.push(`- Response: ${ep.response.type === "array" ? `[{ ${props} }]` : `{ ${props} }`}`);
+        lines.push(
+          `- Response: ${ep.response.type === "array" ? `[{ ${props} }]` : `{ ${props} }`}`,
+        );
       }
       lines.push("");
     }

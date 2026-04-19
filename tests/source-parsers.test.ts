@@ -55,9 +55,7 @@ describe("Java parser — inventory-service", () => {
 
   it("applies controller prefix to all full paths", async () => {
     const result = await parseJavaProject(servicePath, JAVA_LANG, "inventory-service");
-    const withoutPrefix = result.endpoints.filter(
-      (e) => !e.fullPath.startsWith("/api/inventory")
-    );
+    const withoutPrefix = result.endpoints.filter((e) => !e.fullPath.startsWith("/api/inventory"));
     expect(withoutPrefix).toHaveLength(0);
   });
 
@@ -113,7 +111,7 @@ describe("Java parser — inventory-service", () => {
   it("scopes outbound calls to correct method body", async () => {
     const result = await parseJavaProject(servicePath, JAVA_LANG, "inventory-service");
     const deleteEp = result.endpoints.find(
-      (e) => e.fullPath === "/api/inventory/reserve/{reservationId}"
+      (e) => e.fullPath === "/api/inventory/reserve/{reservationId}",
     );
     // DELETE releases reservation — notifies order-service, not notification-service
     const callUrls = deleteEp?.outboundCalls.map((c) => c.rawUrl) ?? [];
@@ -150,9 +148,7 @@ describe("C# parser — notification-service", () => {
 
   it("applies controller route prefix to full paths", async () => {
     const result = await parseCSharpProject(servicePath, CSHARP_LANG, "notification-service");
-    const noPrefixed = result.endpoints.filter(
-      (e) => !e.fullPath.startsWith("/api/notification")
-    );
+    const noPrefixed = result.endpoints.filter((e) => !e.fullPath.startsWith("/api/notification"));
     expect(noPrefixed).toHaveLength(0);
   });
 
@@ -189,7 +185,9 @@ describe("C# parser — notification-service", () => {
     if (postEp?.requestBody && postEp.requestBody.fields.length > 0) {
       const fieldNames = postEp.requestBody.fields.map((f) => f.name);
       // SendNotificationRequest should have UserId at minimum
-      expect(fieldNames.some((n) => n.toLowerCase().includes("id") || n.toLowerCase().includes("user"))).toBe(true);
+      expect(
+        fieldNames.some((n) => n.toLowerCase().includes("id") || n.toLowerCase().includes("user")),
+      ).toBe(true);
     }
     // At minimum, the typeName should be defined
     expect(postEp?.requestBody?.typeName).toBeTruthy();
@@ -305,7 +303,7 @@ describe("C# parser — multi-line method signature regression", () => {
     const result = await parseCSharpProject(servicePath, CSHARP_LANG, "notification-service");
     // At least one POST endpoint should have a request body
     const postWithBody = result.endpoints.filter(
-      (e) => e.method === "POST" && e.requestBody != null
+      (e) => e.method === "POST" && e.requestBody != null,
     );
     expect(postWithBody.length).toBeGreaterThan(0);
   });

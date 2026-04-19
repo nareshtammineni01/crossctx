@@ -38,15 +38,17 @@ async function runScan(
     quiet: boolean;
     openapiOnly: boolean;
     watch?: boolean;
-  }
+  },
 ): Promise<CrossCtxOutput> {
   try {
     // ── Phase 1: Source code scanning ──────────────────────────────────────
     const codeScanResults: CodeScanResult[] = [];
 
     if (!options.openapiOnly) {
-      if (!options.quiet && !options.watch) console.log("  [1/4] Detecting languages and scanning source code...");
-      if (!options.quiet && options.watch) console.log("  [scan] Detecting languages and scanning source code...");
+      if (!options.quiet && !options.watch)
+        console.log("  [1/4] Detecting languages and scanning source code...");
+      if (!options.quiet && options.watch)
+        console.log("  [scan] Detecting languages and scanning source code...");
 
       for (const projectPath of resolvedPaths) {
         // Make sure path exists and is a directory
@@ -54,14 +56,17 @@ async function runScan(
           const entries = await readdir(projectPath);
           void entries; // just checking it exists
         } catch {
-          if (!options.quiet) console.log(`  ⚠️  Skipping ${projectPath} (not found or not a directory)`);
+          if (!options.quiet)
+            console.log(`  ⚠️  Skipping ${projectPath} (not found or not a directory)`);
           continue;
         }
 
         const lang = await detectLanguage(projectPath);
 
         if (!options.quiet) {
-          console.log(`  → ${path.basename(projectPath)} (${lang.language}/${lang.framework}, confidence: ${Math.round(lang.confidence * 100)}%)`);
+          console.log(
+            `  → ${path.basename(projectPath)} (${lang.language}/${lang.framework}, confidence: ${Math.round(lang.confidence * 100)}%)`,
+          );
         }
 
         try {
@@ -71,33 +76,34 @@ async function runScan(
             // Read package.json for service name
             let pkg: Record<string, unknown> | undefined;
             try {
-              pkg = JSON.parse(await readFile(path.join(projectPath, "package.json"), "utf-8")) as Record<string, unknown>;
-            } catch { /* no package.json */ }
+              pkg = JSON.parse(
+                await readFile(path.join(projectPath, "package.json"), "utf-8"),
+              ) as Record<string, unknown>;
+            } catch {
+              /* no package.json */
+            }
 
             const serviceName = deriveServiceName(projectPath, pkg);
             scanResult = await parseTypeScriptProject(projectPath, lang, serviceName);
-
           } else if (lang.language === "java") {
             const serviceName = deriveServiceName(projectPath);
             scanResult = await parseJavaProject(projectPath, lang, serviceName);
-
           } else if (lang.language === "csharp") {
             const serviceName = deriveServiceName(projectPath);
             scanResult = await parseCSharpProject(projectPath, lang, serviceName);
-
           } else if (lang.language === "python") {
             const serviceName = deriveServiceName(projectPath);
             scanResult = await parsePythonProject(projectPath, lang, serviceName);
-
           } else if (lang.language === "go") {
             const serviceName = deriveServiceName(projectPath);
             scanResult = await parseGoProject(projectPath, lang, serviceName);
-
           } else {
             // Unknown language — service name only placeholder
             const serviceName = deriveServiceName(projectPath);
             if (!options.quiet) {
-              console.log(`  ⚠️  ${lang.language}/${lang.framework} — no parser available, using service name only`);
+              console.log(
+                `  ⚠️  ${lang.language}/${lang.framework} — no parser available, using service name only`,
+              );
             }
             scanResult = {
               projectPath,
@@ -113,20 +119,26 @@ async function runScan(
           if (scanResult) codeScanResults.push(scanResult);
         } catch (err) {
           if (!options.quiet) {
-            console.log(`  ⚠️  Failed to scan ${projectPath}: ${err instanceof Error ? err.message : String(err)}`);
+            console.log(
+              `  ⚠️  Failed to scan ${projectPath}: ${err instanceof Error ? err.message : String(err)}`,
+            );
           }
         }
       }
 
       if (!options.quiet) {
         const totalEndpoints = codeScanResults.reduce((sum, r) => sum + r.endpoints.length, 0);
-        console.log(`  Found ${codeScanResults.length} service(s), ${totalEndpoints} endpoint(s)\n`);
+        console.log(
+          `  Found ${codeScanResults.length} service(s), ${totalEndpoints} endpoint(s)\n`,
+        );
       }
     }
 
     // ── Phase 2: OpenAPI scanning (always runs, enriches code scan) ────────
-    if (!options.quiet && !options.watch) console.log("  [2/4] Scanning for OpenAPI/Swagger specs...");
-    if (!options.quiet && options.watch) console.log("  [scan] Scanning for OpenAPI/Swagger specs...");
+    if (!options.quiet && !options.watch)
+      console.log("  [2/4] Scanning for OpenAPI/Swagger specs...");
+    if (!options.quiet && options.watch)
+      console.log("  [scan] Scanning for OpenAPI/Swagger specs...");
 
     const scanResults = await scanForSpecs(resolvedPaths);
     const parsedSpecs: ParsedSpec[] = [];
@@ -169,7 +181,12 @@ async function runScan(
     if (!options.quiet && options.watch) console.log("  [scan] Building output...");
 
     const legacyDependencies = analyzeDependencies(parsedSpecs);
-    const output = buildOutput(parsedSpecs, legacyDependencies, resolvedPaths.map(p => path.relative(process.cwd(), p)), scanResults.length);
+    const output = buildOutput(
+      parsedSpecs,
+      legacyDependencies,
+      resolvedPaths.map((p) => path.relative(process.cwd(), p)),
+      scanResults.length,
+    );
 
     // Attach new data
     output.codeScanResults = codeScanResults;
@@ -219,11 +236,17 @@ program
   .argument("<paths...>", "project directories to scan (one per microservice)")
   .option("-o, --output <file>", "output JSON file path", "crossctx-output.json")
   .option("-m, --markdown [file]", "generate Markdown output")
-  .option("-g, --graph [file]", "generate interactive HTML dependency graph (default: crossctx-graph.html)")
+  .option(
+    "-g, --graph [file]",
+    "generate interactive HTML dependency graph (default: crossctx-graph.html)",
+  )
   .option("-q, --quiet", "suppress terminal output", false)
   .option("--openapi-only", "only scan OpenAPI/Swagger spec files (legacy mode)", false)
   .option("-w, --watch", "watch for file changes and rebuild", false)
-  .option("-d, --diff <baseline>", "compare against a baseline JSON file and report breaking changes")
+  .option(
+    "-d, --diff <baseline>",
+    "compare against a baseline JSON file and report breaking changes",
+  )
   .action(
     async (
       paths: string[],
@@ -235,7 +258,7 @@ program
         openapiOnly: boolean;
         watch: boolean;
         diff?: string;
-      }
+      },
     ) => {
       try {
         const resolvedPaths = paths.map((p) => path.resolve(p));
@@ -259,7 +282,9 @@ program
               process.exit(1);
             }
           } catch (err) {
-            console.error(`\n  Error reading or parsing baseline file: ${err instanceof Error ? err.message : String(err)}`);
+            console.error(
+              `\n  Error reading or parsing baseline file: ${err instanceof Error ? err.message : String(err)}`,
+            );
             process.exit(1);
           }
         }
@@ -276,33 +301,41 @@ program
           // Start watching each resolved path recursively
           for (const dirPath of resolvedPaths) {
             try {
-              const watcher = watch(dirPath, { recursive: true, persistent: true }, (eventType, filename) => {
-                // Only trigger on relevant file extensions
-                if (filename && sourceExtensions.some(ext => filename.endsWith(ext))) {
-                  if (debounceTimer) {
-                    clearTimeout(debounceTimer);
-                  }
-
-                  debounceTimer = setTimeout(async () => {
-                    if (!options.quiet) {
-                      console.log(`\n  [watch] Change detected in ${filename}, rescanning...\n`);
+              const watcher = watch(
+                dirPath,
+                { recursive: true, persistent: true },
+                (eventType, filename) => {
+                  // Only trigger on relevant file extensions
+                  if (filename && sourceExtensions.some((ext) => filename.endsWith(ext))) {
+                    if (debounceTimer) {
+                      clearTimeout(debounceTimer);
                     }
 
-                    try {
-                      await runScan(resolvedPaths, { ...options, watch: true });
-                    } catch (err) {
+                    debounceTimer = setTimeout(async () => {
                       if (!options.quiet) {
-                        console.error(`  [watch] Error during rescan: ${err instanceof Error ? err.message : String(err)}`);
+                        console.log(`\n  [watch] Change detected in ${filename}, rescanning...\n`);
                       }
-                    }
-                  }, debounceMs);
-                }
-              });
+
+                      try {
+                        await runScan(resolvedPaths, { ...options, watch: true });
+                      } catch (err) {
+                        if (!options.quiet) {
+                          console.error(
+                            `  [watch] Error during rescan: ${err instanceof Error ? err.message : String(err)}`,
+                          );
+                        }
+                      }
+                    }, debounceMs);
+                  }
+                },
+              );
 
               watchers.push(watcher);
             } catch (err) {
               if (!options.quiet) {
-                console.error(`  [watch] Failed to watch ${dirPath}: ${err instanceof Error ? err.message : String(err)}`);
+                console.error(
+                  `  [watch] Failed to watch ${dirPath}: ${err instanceof Error ? err.message : String(err)}`,
+                );
               }
             }
           }
@@ -316,7 +349,7 @@ program
             if (!options.quiet) {
               console.log("\n  [watch] Stopping...\n");
             }
-            watchers.forEach(w => w.close());
+            watchers.forEach((w) => w.close());
             process.exit(0);
           });
         }
@@ -324,7 +357,7 @@ program
         console.error("\n  Error:", err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
-    }
+    },
   );
 
 program.parse();

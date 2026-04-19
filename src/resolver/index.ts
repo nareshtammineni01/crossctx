@@ -71,8 +71,9 @@ export function buildServiceRegistry(scanResults: CodeScanResult[]): ServiceRegi
           // e.g. notification-service has hint UserServiceUrl=http://user-service:8080
           //      → byHostname["user-service"] = "user-service"  (not "notification-service")
           // If the referenced service is not in the scanned set, skip — don't map to owner
-          const referencedByName = guessServiceFromName(bareHostname, "", Array.from(byName.keys()))
-            ?? (byName.has(bareHostname) ? bareHostname : null);
+          const referencedByName =
+            guessServiceFromName(bareHostname, "", Array.from(byName.keys())) ??
+            (byName.has(bareHostname) ? bareHostname : null);
 
           if (referencedByName) {
             byHostname.set(hostname, referencedByName);
@@ -93,7 +94,11 @@ export function buildServiceRegistry(scanResults: CodeScanResult[]): ServiceRegi
           // Consul DNS: order-service.service.consul → order-service
           const consulMatch = hostname.match(/^([a-z0-9-]+)\.service\.consul$/i);
           if (consulMatch) {
-            const consulTarget = guessServiceFromName(consulMatch[1], "", Array.from(byName.keys()));
+            const consulTarget = guessServiceFromName(
+              consulMatch[1],
+              "",
+              Array.from(byName.keys()),
+            );
             if (consulTarget) {
               byHostname.set(consulMatch[1], consulTarget);
               byNamedClient.set(consulMatch[1], consulTarget);
@@ -115,19 +120,14 @@ export function buildServiceRegistry(scanResults: CodeScanResult[]): ServiceRegi
         byEnvKey.set(hint.key, guessedService);
         byEnvKey.set(hint.key.toUpperCase(), guessedService);
         // Also camelCase→UPPER_SNAKE: UserServiceUrl → USER_SERVICE_URL
-        const upperSnake = hint.key
-          .replace(/([a-z])([A-Z])/g, "$1_$2")
-          .toUpperCase();
+        const upperSnake = hint.key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
         byEnvKey.set(upperSnake, guessedService);
       }
 
       // HTTP_CLIENT_ORDER_SERVICE → named client "order-service"
       // This is emitted by C# AddHttpClient("order-service", ...) → key = HTTP_CLIENT_ORDER_SERVICE
       if (hint.key.startsWith("HTTP_CLIENT_")) {
-        const clientName = hint.key
-          .slice("HTTP_CLIENT_".length)
-          .toLowerCase()
-          .replace(/_/g, "-");
+        const clientName = hint.key.slice("HTTP_CLIENT_".length).toLowerCase().replace(/_/g, "-");
         const target = guessServiceFromName(clientName, name, Array.from(byName.keys()));
         if (target && target !== name) {
           byNamedClient.set(clientName, target);
@@ -162,7 +162,12 @@ export function buildServiceRegistry(scanResults: CodeScanResult[]): ServiceRegi
       }
       // Also try path (without prefix) for broad matching
       const fragment = endpoint.path.split("/")[1];
-      if (fragment && fragment.length > 2 && !fragment.startsWith("{") && !genericSegments.has(fragment)) {
+      if (
+        fragment &&
+        fragment.length > 2 &&
+        !fragment.startsWith("{") &&
+        !genericSegments.has(fragment)
+      ) {
         if (!byUrlFragment.has(fragment)) {
           byUrlFragment.set(fragment, name);
         }
@@ -176,7 +181,7 @@ export function buildServiceRegistry(scanResults: CodeScanResult[]): ServiceRegi
 function guessServiceFromEnvKey(
   envKey: string,
   currentService: string,
-  allServiceNames: string[]
+  allServiceNames: string[],
 ): string | null {
   // Normalize: handle both UPPER_SNAKE_CASE and camelCase keys
   // UserServiceUrl → user-service-url, ORDER_SERVICE_URL → order-service-url
@@ -204,8 +209,10 @@ function guessServiceFromEnvKey(
     .replace(/-service$/, "");
 
   for (const svcName of allServiceNames) {
-    if (svcName !== currentService &&
-        (svcName.toLowerCase().includes(prefix) || prefix.includes(svcName.toLowerCase()))) {
+    if (
+      svcName !== currentService &&
+      (svcName.toLowerCase().includes(prefix) || prefix.includes(svcName.toLowerCase()))
+    ) {
       return svcName;
     }
   }
@@ -220,7 +227,7 @@ function guessServiceFromEnvKey(
 function guessServiceFromName(
   clientName: string,
   currentService: string,
-  allServiceNames: string[]
+  allServiceNames: string[],
 ): string | null {
   const lower = clientName.toLowerCase();
   // camelCase → kebab-case: orderService → order-service
@@ -260,7 +267,7 @@ function guessServiceFromName(
 export function resolveOutboundCall(
   call: OutboundCall,
   registry: ServiceRegistry,
-  currentService: string
+  currentService: string,
 ): OutboundCall {
   const resolved = { ...call };
   const rawUrl = call.rawUrl;
@@ -273,7 +280,9 @@ export function resolveOutboundCall(
   if (namedSchemeMatch) {
     const clientName = namedSchemeMatch[1];
     const path = namedSchemeMatch[2];
-    const target = registry.byNamedClient.get(clientName) ?? registry.byNamedClient.get(clientName.toLowerCase());
+    const target =
+      registry.byNamedClient.get(clientName) ??
+      registry.byNamedClient.get(clientName.toLowerCase());
     if (target && target !== currentService) {
       resolved.resolvedService = target;
       resolved.resolvedPath = path ? normalizeTemplatePath(path.split("?")[0]) : undefined;
@@ -281,7 +290,11 @@ export function resolveOutboundCall(
       return resolved;
     }
     // Even if we can't find it in registry, guess from name
-    const guessed = guessServiceFromName(clientName, currentService, Array.from(registry.byName.keys()));
+    const guessed = guessServiceFromName(
+      clientName,
+      currentService,
+      Array.from(registry.byName.keys()),
+    );
     if (guessed && guessed !== currentService) {
       resolved.resolvedService = guessed;
       resolved.resolvedPath = path ? normalizeTemplatePath(path.split("?")[0]) : undefined;
@@ -293,7 +306,8 @@ export function resolveOutboundCall(
   // Named client patterns without scheme — just a bare name used as rawUrl
   // e.g. CreateClient("order-service") where we stored "order-service" as rawUrl
   if (!rawUrl.includes("/") && !rawUrl.includes("{") && !rawUrl.startsWith("http")) {
-    const directClient = registry.byNamedClient.get(rawUrl) ?? registry.byNamedClient.get(rawUrl.toLowerCase());
+    const directClient =
+      registry.byNamedClient.get(rawUrl) ?? registry.byNamedClient.get(rawUrl.toLowerCase());
     if (directClient && directClient !== currentService) {
       resolved.resolvedService = directClient;
       resolved.confidence = 0.85;
@@ -313,7 +327,8 @@ export function resolveOutboundCall(
       const hostname = url.hostname;
 
       // Direct hostname lookup
-      const byHost = registry.byHostname.get(hostname) ?? registry.byHostname.get(hostname.split(":")[0]);
+      const byHost =
+        registry.byHostname.get(hostname) ?? registry.byHostname.get(hostname.split(":")[0]);
       if (byHost && byHost !== currentService) {
         resolved.resolvedService = byHost;
         resolved.resolvedPath = url.pathname === "/placeholder" ? undefined : url.pathname;
@@ -337,7 +352,8 @@ export function resolveOutboundCall(
       // Consul DNS: order-service.service.consul
       const consulMatch = hostname.match(/^([a-z0-9-]+)\.service\.consul$/i);
       if (consulMatch) {
-        const consulTarget = registry.byNamedClient.get(consulMatch[1]) ?? registry.byHostname.get(consulMatch[1]);
+        const consulTarget =
+          registry.byNamedClient.get(consulMatch[1]) ?? registry.byHostname.get(consulMatch[1]);
         if (consulTarget && consulTarget !== currentService) {
           resolved.resolvedService = consulTarget;
           resolved.resolvedPath = url.pathname;
@@ -381,18 +397,22 @@ export function resolveOutboundCall(
     }
 
     // Guess from variable name
-    const guessed = guessServiceFromEnvKey(varName, currentService, Array.from(registry.byName.keys()));
+    const guessed = guessServiceFromEnvKey(
+      varName,
+      currentService,
+      Array.from(registry.byName.keys()),
+    );
     if (guessed && guessed !== currentService) {
       resolved.resolvedService = guessed;
       resolved.resolvedPath = extractPath(rawUrl);
-      resolved.confidence = 0.70;
+      resolved.confidence = 0.7;
       return resolved;
     }
 
     // Try resolving the actual env var value from hints
     // varName is uppercased; hint keys may be camelCase, so normalize both for comparison
     for (const [, result] of registry.byName) {
-      const hint = result.serviceUrlHints.find(h => {
+      const hint = result.serviceUrlHints.find((h) => {
         const hKeyUpper = h.key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
         return (hKeyUpper === varName || h.key.toUpperCase() === varName) && h.value;
       });
@@ -403,10 +423,12 @@ export function resolveOutboundCall(
           if (byHost && byHost !== currentService) {
             resolved.resolvedService = byHost;
             resolved.resolvedPath = extractPath(rawUrl);
-            resolved.confidence = 0.80;
+            resolved.confidence = 0.8;
             return resolved;
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
     }
   }
@@ -415,12 +437,18 @@ export function resolveOutboundCall(
   const urlLower = rawUrl.toLowerCase();
   const pathSegmentPattern = "([/][^'\"\\s?#]+)";
   for (const [fragment, svcName] of registry.byUrlFragment) {
-    if (svcName !== currentService && fragment.length > 2 && urlLower.includes(fragment.toLowerCase())) {
+    if (
+      svcName !== currentService &&
+      fragment.length > 2 &&
+      urlLower.includes(fragment.toLowerCase())
+    ) {
       const escapedFrag = fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pathMatch = rawUrl.match(new RegExp(escapedFrag + "[^/]*" + pathSegmentPattern, "i"));
       resolved.resolvedService = svcName;
-      resolved.resolvedPath = pathMatch ? normalizeTemplatePath(pathMatch[1].split("?")[0]) : undefined;
-      resolved.confidence = 0.60;
+      resolved.resolvedPath = pathMatch
+        ? normalizeTemplatePath(pathMatch[1].split("?")[0])
+        : undefined;
+      resolved.confidence = 0.6;
       return resolved;
     }
   }
@@ -428,11 +456,17 @@ export function resolveOutboundCall(
   // ── Strategy 4: Named client guess from partial name in URL ──
   // e.g. "orderService" in a camelCase field name → order-service
   for (const [clientName, svcName] of registry.byNamedClient) {
-    if (svcName !== currentService && clientName.length > 3 && urlLower.includes(clientName.toLowerCase())) {
+    if (
+      svcName !== currentService &&
+      clientName.length > 3 &&
+      urlLower.includes(clientName.toLowerCase())
+    ) {
       const escapedClient = clientName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pathAfter = rawUrl.match(new RegExp(escapedClient + "[^/]*" + pathSegmentPattern, "i"));
       resolved.resolvedService = svcName;
-      resolved.resolvedPath = pathAfter ? normalizeTemplatePath(pathAfter[1].split("?")[0]) : undefined;
+      resolved.resolvedPath = pathAfter
+        ? normalizeTemplatePath(pathAfter[1].split("?")[0])
+        : undefined;
       resolved.confidence = 0.55;
       return resolved;
     }
@@ -469,7 +503,10 @@ function normalizeTemplatePath(path: string): string {
 function pathMatches(endpointPath: string, requestPath: string): boolean {
   // Normalize both paths to compare
   const normalize = (p: string) =>
-    p.replace(/:[^/]+/g, "{x}").replace(/\{[^}]+\}/g, "{x}").replace(/\/+$/, "");
+    p
+      .replace(/:[^/]+/g, "{x}")
+      .replace(/\{[^}]+\}/g, "{x}")
+      .replace(/\/+$/, "");
 
   return normalize(endpointPath) === normalize(requestPath);
 }
@@ -482,17 +519,22 @@ export function findTargetEndpoint(
   targetService: string,
   targetPath: string | undefined,
   targetMethod: string,
-  registry: ServiceRegistry
+  registry: ServiceRegistry,
 ): SourceEndpoint | undefined {
   const svc = registry.byName.get(targetService);
   if (!svc || !targetPath) return undefined;
 
   // Match by method + path
-  return svc.endpoints.find(
-    (ep) =>
-      ep.method === targetMethod &&
-      (pathMatches(ep.path, targetPath) || pathMatches(ep.fullPath, targetPath))
-  ) ?? svc.endpoints.find((ep) => pathMatches(ep.path, targetPath) || pathMatches(ep.fullPath, targetPath));
+  return (
+    svc.endpoints.find(
+      (ep) =>
+        ep.method === targetMethod &&
+        (pathMatches(ep.path, targetPath) || pathMatches(ep.fullPath, targetPath)),
+    ) ??
+    svc.endpoints.find(
+      (ep) => pathMatches(ep.path, targetPath) || pathMatches(ep.fullPath, targetPath),
+    )
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -502,7 +544,7 @@ export function findTargetEndpoint(
 
 export function buildAllCallChains(
   scanResults: CodeScanResult[],
-  registry: ServiceRegistry
+  registry: ServiceRegistry,
 ): CallChain[] {
   const chains: CallChain[] = [];
 
@@ -534,7 +576,7 @@ function walkChain(
   registry: ServiceRegistry,
   visited: Set<string>,
   edges: CallChainEdge[],
-  depth: number
+  depth: number,
 ): CallChainNode {
   const nodeKey = `${serviceName}:${endpoint.method}:${endpoint.fullPath}`;
   const endpointLabel = `${endpoint.method} ${endpoint.fullPath}`;
@@ -584,12 +626,14 @@ function walkChain(
       resolvedCall.resolvedService,
       resolvedCall.resolvedPath,
       resolvedCall.method,
-      registry
+      registry,
     );
 
     // Add edge — keep highest-confidence edge for each from→toService pair
     const existingEdgeIdx = edges.findIndex(
-      (e) => e.from === `${serviceName}:${endpointLabel}` && e.toService === resolvedCall.resolvedService
+      (e) =>
+        e.from === `${serviceName}:${endpointLabel}` &&
+        e.toService === resolvedCall.resolvedService,
     );
 
     const newEdge: CallChainEdge = {
@@ -618,7 +662,7 @@ function walkChain(
         registry,
         new Set(visited), // copy visited set so sibling calls don't block each other
         edges,
-        depth + 1
+        depth + 1,
       );
       node.calls.push(childNode);
     } else {

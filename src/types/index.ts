@@ -152,7 +152,7 @@ export interface CallChain {
 
 export interface CallChainEdge {
   from: string; // "service:METHOD /path"
-  to: string;   // "service:METHOD /path"
+  to: string; // "service:METHOD /path"
   fromService: string;
   toService: string;
   rawUrl: string;

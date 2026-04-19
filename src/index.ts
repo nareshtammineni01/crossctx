@@ -19,7 +19,12 @@ export { parseJavaProject } from "./parsers/java.js";
 export { parseCSharpProject } from "./parsers/csharp.js";
 export { parsePythonProject } from "./parsers/python.js";
 export { extractMessageEvents } from "./parsers/messaging.js";
-export { buildServiceRegistry, buildAllCallChains, resolveOutboundCall, findTargetEndpoint } from "./resolver/index.js";
+export {
+  buildServiceRegistry,
+  buildAllCallChains,
+  resolveOutboundCall,
+  findTargetEndpoint,
+} from "./resolver/index.js";
 
 // Diff / Breaking change detection
 export { diffOutputs } from "./differ/index.js";
