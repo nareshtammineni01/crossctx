@@ -1,7 +1,7 @@
 {
   "name": "crossctx",
   "version": "0.1.0",
-  "description": "Generate cross-service API dependency maps from OpenAPI/Swagger files",
+  "description": "Scan microservice source code and generate cross-service API dependency maps, interactive graphs, and LLM-ready context — no config required",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -21,21 +21,30 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "openapi",
-    "swagger",
-    "api",
-    "dependency-map",
     "microservices",
+    "api-dependency-map",
+    "service-map",
+    "architecture",
     "cli",
-    "crossctx",
-    "llm",
-    "ai"
+    "code-analysis",
+    "spring-boot",
+    "nestjs",
+    "aspnet",
+    "fastapi",
+    "llm-context",
+    "ai",
+    "openapi",
+    "graph"
   ],
-  "author": "Naresh",
+  "author": "Naresh Tammineni <nareshtammineni01@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nareshtammineni01/crossctx.git"
+    "url": "git+https://github.com/nareshtammineni01/crossctx.git"
+  },
+  "homepage": "https://github.com/nareshtammineni01/crossctx#readme",
+  "bugs": {
+    "url": "https://github.com/nareshtammineni01/crossctx/issues"
   },
   "engines": {
     "node": ">=18.0.0"
