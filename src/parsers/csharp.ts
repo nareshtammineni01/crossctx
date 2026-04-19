@@ -226,7 +226,7 @@ function extractCSharpMethodSignature(
 
     // public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserDto dto)
     const sig = line.match(
-      /(?:public|private|protected)?\s*(?:async\s+)?(?:Task<)?(?:ActionResult<)?([\w<>[],\s?]+?)>?\s*(\w+)\s*\(([^)]*)/,
+      /(?:public|private|protected)?\s*(?:async\s+)?(?:Task<)?(?:ActionResult<)?([\w<>[\],\s?]+?)>?\s*(\w+)\s*\(([^)]*)/,
     );
     if (sig) {
       returnType = sig[1].trim();
@@ -500,7 +500,7 @@ function parseCSharpClassBody(body: string): PayloadField[] {
   // public string Email { get; set; }
   // public int? Age { get; init; } = null;
   // [Required] public string Name { get; set; } = string.Empty;
-  const propRegex = /(?:\[[\w\s"'(),.]+]\s*)*public\s+([\w?<>[]]+)\s+(\w+)\s*\{\s*get/g;
+  const propRegex = /(?:\[[\w\s"'(),.]+]\s*)*public\s+([\w?<>[\]]+)\s+(\w+)\s*\{\s*get/g;
   let match: RegExpExecArray | null;
 
   while ((match = propRegex.exec(body)) !== null) {
