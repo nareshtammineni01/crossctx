@@ -305,4 +305,6 @@ describe("C# parser — multi-line method signature regression", () => {
     const postWithBody = result.endpoints.filter(
       (e) => e.method === "POST" && e.requestBody != null,
     );
-    expect(postWithB
+    expect(postWithBody.length).toBeGreaterThan(0);
+  });
+});
