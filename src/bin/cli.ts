@@ -304,10 +304,7 @@ program
   .version("0.2.2")
   .argument("[paths...]", "project directories to scan (one per microservice)")
   .option("-o, --output <file>", "output JSON file path")
-  .option(
-    "-f, --format <format>",
-    "output format: json, markdown, graph, or all (comma-separated)",
-  )
+  .option("-f, --format <format>", "output format: json, markdown, graph, or all (comma-separated)")
   .option("-m, --markdown [file]", "generate Markdown output (deprecated: use --format markdown)")
   .option(
     "-g, --graph [file]",
@@ -320,10 +317,7 @@ program
     "-d, --diff <baseline>",
     "compare against a baseline JSON file and report breaking changes",
   )
-  .option(
-    "--min-confidence <threshold>",
-    "filter edges below this confidence threshold (0–1)",
-  )
+  .option("--min-confidence <threshold>", "filter edges below this confidence threshold (0–1)")
   .action(
     async (
       pathArgs: string[],

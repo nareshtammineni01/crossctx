@@ -31,7 +31,7 @@ Or use directly with npx — no install needed.
 
 ## Interactive HTML Graph
 
-![CrossCtx graph UI showing 7 services, confidence-colored edges, service filter chips, endpoint detail panel with DTO fields and call chain, and AI Context Builder](docs/graph-ui.png)
+[![CrossCtx graph UI showing 7 services, confidence-colored edges, service filter chips, endpoint detail panel with DTO fields and call chain, and AI Context Builder](docs/graph-ui.png)](https://nareshtammineni01.github.io/crossctx/crossctx-graph.html)
 
 The graph is a single self-contained HTML file — open it in any browser, no server needed.
 

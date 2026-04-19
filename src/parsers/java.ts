@@ -632,7 +632,7 @@ function parseJavaClassBody(body: string): PayloadField[] {
     if (type.includes("(") || ["void", "class", "static"].includes(type)) continue;
     // Skip method references that got picked up (e.g. "final Predicate<T>")
     if (/^[a-z]/.test(type)) {
-      const primitives = ["int","long","double","float","boolean","char","byte","short"];
+      const primitives = ["int", "long", "double", "float", "boolean", "char", "byte", "short"];
       if (!primitives.includes(type.replace(/\[\]$/, "").split("<")[0])) continue;
     }
 
