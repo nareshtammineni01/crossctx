@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import path from "path";
-import { readdir, readFile } from "fs/promises";
+import { readdir, readFile, writeFile, access } from "fs/promises";
 import { watch } from "fs";
 import type { FSWatcher } from "fs";
 
@@ -24,6 +24,9 @@ import { buildServiceRegistry, buildAllCallChains } from "../resolver/index.js";
 // Diff / Breaking change detection
 import { diffOutputs } from "../differ/index.js";
 
+// Config file support
+import { loadConfig, mergeConfig, DEFAULT_CONFIG_JSON } from "../config.js";
+
 import type { ParsedSpec, CodeScanResult, CrossCtxOutput } from "../types/index.js";
 
 const program = new Command();
@@ -38,6 +41,7 @@ async function runScan(
     quiet: boolean;
     openapiOnly: boolean;
     watch?: boolean;
+    minConfidence?: number;
   },
 ): Promise<CrossCtxOutput> {
   try {
@@ -56,8 +60,11 @@ async function runScan(
           const entries = await readdir(projectPath);
           void entries; // just checking it exists
         } catch {
-          if (!options.quiet)
-            console.log(`  ⚠️  Skipping ${projectPath} (not found or not a directory)`);
+          if (!options.quiet) {
+            console.log(`  ⚠️  Skipping: ${projectPath}`);
+            console.log(`     Path does not exist or is not a directory.`);
+            console.log(`     Check the spelling or update your .crossctxrc.json config.\n`);
+          }
           continue;
         }
 
@@ -101,9 +108,19 @@ async function runScan(
             // Unknown language — service name only placeholder
             const serviceName = deriveServiceName(projectPath);
             if (!options.quiet) {
-              console.log(
-                `  ⚠️  ${lang.language}/${lang.framework} — no parser available, using service name only`,
-              );
+              const dirName = path.basename(projectPath);
+              console.log(`  ⚠️  Could not detect a supported language in: ${dirName}`);
+              console.log(`     crossctx looks for these markers:`);
+              console.log(`       TypeScript/JS  →  package.json`);
+              console.log(`       Java           →  pom.xml or build.gradle`);
+              console.log(`       C#             →  *.csproj or *.sln`);
+              console.log(`       Python         →  requirements.txt, pyproject.toml, or Pipfile`);
+              console.log(`       Go             →  go.mod`);
+              console.log(`     Options:`);
+              console.log(`       • Add one of the above marker files to ${dirName}/`);
+              console.log(`       • Use --openapi-only to scan only OpenAPI/Swagger specs`);
+              console.log(`       • Run \`crossctx init\` to set up a config file`);
+              console.log();
             }
             scanResult = {
               projectPath,
@@ -188,9 +205,34 @@ async function runScan(
       scanResults.length,
     );
 
+    // ── Apply --min-confidence filter ─────────────────────────────────────
+    const minConf = options.minConfidence ?? 0;
+    let filteredChains = callChains;
+    if (minConf > 0) {
+      filteredChains = callChains
+        .map((chain) => ({
+          ...chain,
+          edges: chain.edges.filter((e) => (e.confidence ?? 0) >= minConf),
+        }))
+        .filter((chain) => chain.edges.length > 0 || chain.rootService !== "");
+
+      if (!options.quiet) {
+        const removed = callChains.length - filteredChains.length;
+        const edgesRemoved =
+          callChains.reduce((s, c) => s + c.edges.length, 0) -
+          filteredChains.reduce((s, c) => s + c.edges.length, 0);
+        if (edgesRemoved > 0) {
+          console.log(
+            `  Filtered ${edgesRemoved} low-confidence edge(s) (threshold: ${minConf})\n`,
+          );
+        }
+        void removed;
+      }
+    }
+
     // Attach new data
     output.codeScanResults = codeScanResults;
-    output.callChains = callChains;
+    output.callChains = filteredChains;
 
     // JSON output
     const outputPath = path.resolve(options.output);
@@ -229,44 +271,144 @@ async function runScan(
   }
 }
 
+// ── `crossctx init` subcommand ─────────────────────────────────────────────────
+program
+  .command("init")
+  .description("Scaffold a .crossctxrc.json config file in the current directory")
+  .action(async () => {
+    const configPath = path.join(process.cwd(), ".crossctxrc.json");
+
+    // Check if config already exists
+    try {
+      await access(configPath);
+      console.log("\n  .crossctxrc.json already exists. Delete it first to reinitialize.\n");
+      process.exit(1);
+    } catch {
+      // Does not exist — proceed
+    }
+
+    await writeFile(configPath, DEFAULT_CONFIG_JSON + "\n", "utf-8");
+
+    console.log("\n  ✅  Created .crossctxrc.json\n");
+    console.log("  Edit the config to point at your service directories, then run:\n");
+    console.log("    crossctx\n");
+    console.log(
+      "  (crossctx reads paths from the config file, so no arguments needed once configured)\n",
+    );
+  });
+
+// ── Main scan command ──────────────────────────────────────────────────────────
 program
   .name("crossctx")
   .description("Generate cross-service API dependency maps from source code + OpenAPI specs")
-  .version("0.2.0")
-  .argument("<paths...>", "project directories to scan (one per microservice)")
-  .option("-o, --output <file>", "output JSON file path", "crossctx-output.json")
-  .option("-m, --markdown [file]", "generate Markdown output")
+  .version("0.2.2")
+  .argument("[paths...]", "project directories to scan (one per microservice)")
+  .option("-o, --output <file>", "output JSON file path")
+  .option(
+    "-f, --format <format>",
+    "output format: json, markdown, graph, or all (comma-separated)",
+  )
+  .option("-m, --markdown [file]", "generate Markdown output (deprecated: use --format markdown)")
   .option(
     "-g, --graph [file]",
-    "generate interactive HTML dependency graph (default: crossctx-graph.html)",
+    "generate interactive HTML dependency graph (deprecated: use --format graph)",
   )
-  .option("-q, --quiet", "suppress terminal output", false)
-  .option("--openapi-only", "only scan OpenAPI/Swagger spec files (legacy mode)", false)
+  .option("-q, --quiet", "suppress terminal output")
+  .option("--openapi-only", "only scan OpenAPI/Swagger spec files (legacy mode)")
   .option("-w, --watch", "watch for file changes and rebuild", false)
   .option(
     "-d, --diff <baseline>",
     "compare against a baseline JSON file and report breaking changes",
   )
+  .option(
+    "--min-confidence <threshold>",
+    "filter edges below this confidence threshold (0–1)",
+  )
   .action(
     async (
-      paths: string[],
-      options: {
-        output: string;
+      pathArgs: string[],
+      rawOptions: {
+        output?: string;
+        format?: string;
         markdown?: boolean | string;
         graph?: boolean | string;
-        quiet: boolean;
-        openapiOnly: boolean;
+        quiet?: boolean;
+        openapiOnly?: boolean;
         watch: boolean;
         diff?: string;
+        minConfidence?: string;
       },
     ) => {
       try {
-        const resolvedPaths = paths.map((p) => path.resolve(p));
+        // ── Load and merge config file ──────────────────────────────────────
+        const fileConfig = await loadConfig();
+        const options = mergeConfig(fileConfig, rawOptions);
 
-        if (!options.quiet) console.log("\n  CrossCtx v0.2.0\n");
+        // Apply defaults that were previously inline
+        if (options.output === undefined) options.output = "crossctx-output.json";
+        if (options.quiet === undefined) options.quiet = false;
+        if (options.openapiOnly === undefined) options.openapiOnly = false;
+
+        // Resolve paths: CLI args > config file paths > error
+        const inputPaths: string[] = pathArgs.length > 0 ? pathArgs : (fileConfig.paths ?? []);
+
+        if (inputPaths.length === 0) {
+          console.error(
+            "\n  Error: No project paths provided.\n\n" +
+              "  Usage:  crossctx <paths...>\n" +
+              "  Or run: crossctx init  to create a .crossctxrc.json config file\n",
+          );
+          process.exit(1);
+        }
+
+        // Parse --min-confidence
+        let minConfidence = 0;
+        if (options.minConfidence !== undefined) {
+          minConfidence = parseFloat(String(options.minConfidence));
+          if (isNaN(minConfidence) || minConfidence < 0 || minConfidence > 1) {
+            console.error("\n  Error: --min-confidence must be a number between 0 and 1\n");
+            process.exit(1);
+          }
+        } else if (fileConfig.minConfidence !== undefined) {
+          minConfidence = fileConfig.minConfidence;
+        }
+
+        // Resolve --format into markdown/graph booleans for the run pipeline
+        // Support: --format json|markdown|graph|all  or comma-separated combinations
+        const formatStr = options.format ?? (fileConfig.format as string | undefined);
+        if (formatStr) {
+          const formats = String(formatStr)
+            .split(",")
+            .map((f) => f.trim().toLowerCase());
+          if (formats.includes("markdown") || formats.includes("all")) {
+            if (options.markdown === undefined) options.markdown = true;
+          }
+          if (formats.includes("graph") || formats.includes("all")) {
+            if (options.graph === undefined) options.graph = true;
+          }
+        }
+
+        // Apply legacy config.markdown / config.graph if still unset
+        if (options.markdown === undefined && fileConfig.markdown !== undefined) {
+          options.markdown = fileConfig.markdown;
+        }
+        if (options.graph === undefined && fileConfig.graph !== undefined) {
+          options.graph = fileConfig.graph;
+        }
+
+        const resolvedPaths = inputPaths.map((p) => path.resolve(p));
+
+        if (!options.quiet) console.log("\n  CrossCtx v0.2.2\n");
 
         // Run initial scan
-        const currentOutput = await runScan(resolvedPaths, { ...options, watch: false });
+        const currentOutput = await runScan(resolvedPaths, {
+          ...options,
+          output: options.output as string,
+          quiet: options.quiet as boolean,
+          openapiOnly: options.openapiOnly as boolean,
+          watch: false,
+          minConfidence,
+        });
 
         // Handle diff if baseline provided
         if (options.diff) {
@@ -317,7 +459,14 @@ program
                       }
 
                       try {
-                        await runScan(resolvedPaths, { ...options, watch: true });
+                        await runScan(resolvedPaths, {
+                          ...options,
+                          output: options.output as string,
+                          quiet: options.quiet as boolean,
+                          openapiOnly: options.openapiOnly as boolean,
+                          watch: true,
+                          minConfidence,
+                        });
                       } catch (err) {
                         if (!options.quiet) {
                           console.error(

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nareshtammineni01/crossctx/main/schema/crossctxrc.schema.json",
+  "paths": [
+    "./user-service",
+    "./order-service",
+    "./payment-service",
+    "./inventory-service",
+    "./analytics-service",
+    "./notification-service",
+    "./email-service",
+    "./go-order-service"
+  ],
+  "output": "crossctx-output.json",
+  "format": "all",
+  "quiet": false,
+  "minConfidence": 0
+}

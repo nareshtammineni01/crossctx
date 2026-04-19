@@ -12,7 +12,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Payload extractor enrichment (cross-file DTO resolution, confidence scoring)
 - HTML report polish (depth visualization, language color bands, PNG/SVG export)
 - Go and Ruby parser support
-- Kafka/RabbitMQ message queue detection
+
+---
+
+## [0.2.2] - 2026-04-19
+
+Developer experience improvements: config file, unified format flag, better errors, graph filter UI, and DTO accuracy improvements.
+
+### Added
+
+**`crossctx init` command**
+- Scaffolds a `.crossctxrc.json` config file in the current directory with sensible defaults
+- Prevents accidental overwrite if config already exists
+- Prints a quick-start message after creation
+
+**Config file support (`.crossctxrc.json` / `crossctx.config.json`)**
+- CLI reads config from the current working directory before applying CLI flags
+- CLI flags always take precedence over config file values
+- Supports all options: `paths`, `output`, `format`, `markdown`, `graph`, `quiet`, `openapiOnly`, `minConfidence`
+- `paths` in config enables running `crossctx` with no arguments
+
+**`--format` flag**
+- New unified `-f, --format <format>` flag: `json`, `markdown`, `graph`, or `all`
+- Comma-separated values supported: `--format markdown,graph`
+- `--markdown` and `--graph` remain as deprecated aliases for backwards compatibility
+
+**`--min-confidence` flag**
+- Filters call chain edges below the given confidence threshold (0–1)
+- Applied before JSON output, markdown, and graph rendering
+- Prints a summary of how many edges were filtered
+
+**Graph UI — toolbar with real-time filters**
+- Confidence threshold slider (0–100%) — hides edges below threshold in real-time without re-running the scan
+- Service filter chips — click to isolate specific services in the graph
+- Reset button — restores all elements to visible state
+- Both filters compose: e.g. show only edges ≥ 70% confidence between two specific services
+
+### Improved
+
+**Better error messages for unrecognized projects**
+- When a directory doesn't match any known language, now prints exactly which marker files were looked for and what to do next (add a marker file, use `--openapi-only`, or run `crossctx init`)
+- "Path not found" error now includes a hint to check spelling or config file
+
+**Java DTO extraction**
+- `@JsonProperty("name")` annotations now override the field name in output
+- `@NotNull`, `@NotBlank`, `@NotEmpty`, `@NonNull` annotations now set `required: true`
+- `@Column(nullable = false)` also sets `required: true`
+- Field regex improved to correctly handle multi-line annotations before field declarations
+
+**C# DTO extraction**
+- Class body extraction now uses brace-depth tracking instead of a greedy regex — correctly handles nested generic types in property declarations
+- `[JsonPropertyName("snake_case")]` annotations now override property names in output
+- C# 11 `required` keyword on properties now sets `required: true`
+- `[Required]` data annotation now correctly sets `required: true`
+- Non-nullable value types (int, bool, etc.) now default to `required: true`
+
+### Other
+
+**Examples directory**
+- Added `examples/README.md` with quick-start instructions and directory overview
+- Added `examples/.crossctxrc.json` config demonstrating all services and config options
 
 ---
 

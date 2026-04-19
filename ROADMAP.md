@@ -29,18 +29,18 @@ The working MVP. Proves the concept end-to-end.
 
 ---
 
-## v0.2 — Developer Experience 🚧 In Progress
+## v0.2 — Developer Experience ✅ Complete
 
 Focus: make the tool easier to adopt and contribute to.
 
-- [ ] Improve graph UI — zoom, search, filter by service, toggle confidence threshold
-- [ ] `--format` flag: `json` | `markdown` | `graph` | `all` (simplify the current flag set)
-- [ ] Better error messages when a project path doesn't match any known language
-- [ ] `crossctx init` — scaffold a config file (`.crossctxrc`) for pinning paths and options
-- [ ] Config file support (`.crossctxrc.json` / `crossctx.config.ts`) — avoid repeating CLI flags
-- [ ] Improve DTO/payload shape extraction accuracy for Java and C#
-- [ ] Add `--min-confidence <0-1>` flag to filter low-confidence edges from output
-- [ ] Published examples directory with sample multi-service repos for testing
+- [x] Improve graph UI — confidence threshold slider + service filter chips (real-time, no rescan)
+- [x] `--format` flag: `json` | `markdown` | `graph` | `all` (simplifies the current flag set; old `--markdown`/`--graph` remain as aliases)
+- [x] Better error messages when a project path doesn't match any known language
+- [x] `crossctx init` — scaffold a `.crossctxrc.json` config file for pinning paths and options
+- [x] Config file support (`.crossctxrc.json` / `crossctx.config.json`) — avoid repeating CLI flags
+- [x] Improve DTO/payload shape extraction accuracy for Java and C#
+- [x] Add `--min-confidence <0-1>` flag to filter low-confidence edges from output
+- [x] Published examples directory with sample multi-service repos for testing
 
 ---
 

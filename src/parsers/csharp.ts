@@ -455,27 +455,51 @@ function extractCSharpPayloadShapes(content: string): PayloadShape[] {
     }
   }
 
-  // C# classes
-  const classRegex =
-    /(?:public|internal)\s+(?:partial\s+)?class\s+(\w+)(?:\s*:\s*[^{]+)?\s*\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/gs;
+  // C# classes — use brace-depth scanning to handle nested generics properly
+  const classHeaderRegex =
+    /(?:public|internal)\s+(?:partial\s+)?class\s+(\w+)(?:\s*:\s*[^{]+)?\s*\{/g;
 
-  while ((match = classRegex.exec(content)) !== null) {
+  while ((match = classHeaderRegex.exec(content)) !== null) {
     const typeName = match[1];
     if (
-      ["Controller", "Service", "Repository", "Startup", "Program"].some((s) =>
-        typeName.endsWith(s),
+      ["Controller", "Service", "Repository", "Startup", "Program", "Middleware", "Handler"].some(
+        (s) => typeName.endsWith(s),
       )
     )
       continue;
 
-    const body = match[2];
-    const fields = parseCSharpClassBody(body);
-    if (fields.length > 0) {
-      shapes.push({ typeName, fields, source: "dto-class" });
+    // Extract class body with brace-depth tracking
+    const bodyStart = match.index + match[0].length;
+    const body = extractCSharpClassBodyByBraceDepth(content, bodyStart);
+    if (body !== null) {
+      const fields = parseCSharpClassBody(body);
+      if (fields.length > 0) {
+        shapes.push({ typeName, fields, source: "dto-class" });
+      }
     }
   }
 
   return shapes;
+}
+
+function extractCSharpClassBodyByBraceDepth(content: string, startIdx: number): string | null {
+  let depth = 1;
+  let endIdx = startIdx;
+
+  for (let i = startIdx; i < content.length; i++) {
+    const ch = content[i];
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        endIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (depth !== 0) return null;
+  return content.substring(startIdx, endIdx);
 }
 
 function parseRecordParams(params: string): PayloadField[] {
@@ -499,21 +523,35 @@ function parseRecordParams(params: string): PayloadField[] {
 function parseCSharpClassBody(body: string): PayloadField[] {
   const fields: PayloadField[] = [];
 
-  // public string Email { get; set; }
-  // public int? Age { get; init; } = null;
-  // [Required] public string Name { get; set; } = string.Empty;
-  const propRegex = /(?:\[[\w\s"'(),.]+]\s*)*public\s+([\w?<>[\]]+)\s+(\w+)\s*\{\s*get/g;
+  // Match property declarations, optionally preceded by attributes
+  // Handles:
+  //   public string Email { get; set; }
+  //   [Required] public string Name { get; set; }
+  //   [JsonPropertyName("first_name")] public string FirstName { get; init; }
+  //   public required string Id { get; set; }   (C# 11 required modifier)
+  //   public int? Age { get; set; } = 0;
+  const propRegex =
+    /((?:\[[\w\s"'(),.[\]{}]+\]\s*)*)(?:public\s+)(required\s+)?([\w?<>[\]]+)\s+(\w+)\s*\{\s*get/g;
   let match: RegExpExecArray | null;
 
   while ((match = propRegex.exec(body)) !== null) {
-    const type = match[1];
-    const name = match[2];
+    const annotations = match[1] ?? "";
+    const requiredKeyword = match[2];
+    const type = match[3];
+    const rawName = match[4];
 
-    if (["string", "int", "long", "bool", "object"].includes(name.toLowerCase())) continue;
+    if (["string", "int", "long", "bool", "object", "void"].includes(rawName.toLowerCase()))
+      continue;
 
-    // Check for [Required] in preceding lines
-    const preceding = body.substring(Math.max(0, match.index - 100), match.index);
-    const required = preceding.includes("[Required]") || !type.endsWith("?");
+    // [JsonPropertyName("snake_case")] override
+    const jsonNameMatch = annotations.match(/\[JsonPropertyName\s*\(\s*["']([^"']+)["']\s*\)\]/);
+    const name = jsonNameMatch ? jsonNameMatch[1] : rawName;
+
+    // Required if: [Required], C# 11 `required` keyword, or non-nullable value type
+    const required =
+      !!requiredKeyword ||
+      annotations.includes("[Required]") ||
+      (!type.endsWith("?") && !["string", "object"].includes(type.toLowerCase()));
 
     fields.push({
       name,

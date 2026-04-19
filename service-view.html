@@ -1,30 +1,4 @@
-import { writeFile } from "fs/promises";
-import type { CrossCtxOutput, CodeScanResult, CallChain } from "../types/index.js";
-
-export async function saveGraph(output: CrossCtxOutput, outputPath: string): Promise<void> {
-  const html = renderGraph(output);
-  await writeFile(outputPath, html, "utf-8");
-}
-
-export function renderGraph(output: CrossCtxOutput): string {
-  const scanResults = output.codeScanResults ?? [];
-  const callChains = output.callChains ?? [];
-
-  // Build graph nodes and edges from code scan results
-  const services = buildServiceNodes(scanResults, output);
-  const graphEdges = buildGraphEdges(callChains, scanResults, output);
-  const endpointsData = buildEndpointsData(scanResults, output);
-
-  // Build controller groupings for sidebar + single-service graph view
-  const controllerGroups = buildControllerGroups(endpointsData);
-
-  const dataJson = JSON.stringify(
-    { services, graphEdges, endpointsData, callChains, controllerGroups },
-    null,
-    0,
-  );
-
-  return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -503,7 +477,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script>
 // ─── Data ────────────────────────────────────────────────────────────────────
-const DATA = ${dataJson};
+const DATA = {"services":[],"graphEdges":[],"endpointsData":[],"callChains":[],"controllerGroups":{}};
 const { services, graphEdges, endpointsData, callChains, controllerGroups } = DATA;
 
 const SERVICE_COLORS = [
@@ -834,12 +808,12 @@ function buildSidebar(filter = '') {
     // Service header
     const header = document.createElement('div');
     header.className = 'service-header' + (filter || services.length === 1 ? ' open' : '');
-    header.innerHTML = \`
-      <div class="svc-dot" style="background:\${colorMap[svc.id]}"></div>
-      <span class="svc-name">\${svc.id}</span>
-      <span class="svc-badge">\${visibleEps.length}</span>
+    header.innerHTML = `
+      <div class="svc-dot" style="background:${colorMap[svc.id]}"></div>
+      <span class="svc-name">${svc.id}</span>
+      <span class="svc-badge">${visibleEps.length}</span>
       <span class="svc-chevron">▶</span>
-    \`;
+    `;
     header.addEventListener('click', () => {
       header.classList.toggle('open');
       if (currentView === "service") highlightService(svc.id);
@@ -867,12 +841,12 @@ function buildSidebar(filter = '') {
 
         const ctrlHeader = document.createElement('div');
         ctrlHeader.className = 'ctrl-header' + (filter ? ' open' : '');
-        ctrlHeader.innerHTML = \`
-          <div class="svc-dot" style="background:\${ctrlColor}; width:8px; height:8px; flex-shrink:0"></div>
-          <span class="ctrl-name">\${ctrl.name.replace('Controller', '')}</span>
-          <span class="ctrl-badge">\${displayEps.length}</span>
+        ctrlHeader.innerHTML = `
+          <div class="svc-dot" style="background:${ctrlColor}; width:8px; height:8px; flex-shrink:0"></div>
+          <span class="ctrl-name">${ctrl.name.replace('Controller', '')}</span>
+          <span class="ctrl-badge">${displayEps.length}</span>
           <span class="ctrl-chevron">▶</span>
-        \`;
+        `;
         ctrlHeader.addEventListener('click', (e) => {
           e.stopPropagation();
           ctrlHeader.classList.toggle('open');
@@ -897,11 +871,11 @@ function buildSidebar(filter = '') {
           const item = document.createElement('div');
           item.className = 'endpoint-item';
           item.dataset.epId = ep.id;
-          item.innerHTML = \`
-            <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-            <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-            \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
-          \`;
+          item.innerHTML = `
+            <span class="method-badge method-${ep.method}">${ep.method}</span>
+            <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+            ${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+          `;
           item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
           ctrlEpList.appendChild(item);
         });
@@ -917,11 +891,11 @@ function buildSidebar(filter = '') {
         item.className = 'endpoint-item';
         item.dataset.epId = ep.id;
         item.style.paddingLeft = '30px';
-        item.innerHTML = \`
-          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-          \${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
-        \`;
+        item.innerHTML = `
+          <span class="method-badge method-${ep.method}">${ep.method}</span>
+          <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+          ${ep.hasChain ? '<span class="ep-chain-icon">⛓</span>' : ''}
+        `;
         item.addEventListener('click', (e) => { e.stopPropagation(); selectEndpoint(ep); });
         epList.appendChild(item);
       });
@@ -1066,47 +1040,47 @@ document.getElementById('panel-close').addEventListener('click', closePanel);
 function selectEndpoint(ep) {
   // Deselect previous
   document.querySelectorAll('.endpoint-item.selected').forEach(el => el.classList.remove('selected'));
-  const el = document.querySelector(\`[data-ep-id="\${ep.id}"]\`);
+  const el = document.querySelector(`[data-ep-id="${ep.id}"]`);
   if (el) el.classList.add('selected');
 
   // Build panel content
   const color = colorMap[ep.service] || '#58a6ff';
-  const svcDot = \`<div class="svc-dot" style="background:\${color}"></div>\`;
+  const svcDot = `<div class="svc-dot" style="background:${color}"></div>`;
   let html = '';
 
   // Service info
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Service</div>
-    <div class="panel-service">\${svcDot}<span class="panel-service-name">\${ep.service}</span></div>
-    <div class="panel-path">\${ep.fullPath || ep.path}</div>
-    \${ep.summary ? \`<div class="panel-summary">\${ep.summary}</div>\` : ''}
-    \${ep.sourceFile ? \`<div class="panel-source">\${ep.sourceFile.split('/').slice(-2).join('/')}\${ep.line ? ':' + ep.line : ''}</div>\` : ''}
-  </div>\`;
+    <div class="panel-service">${svcDot}<span class="panel-service-name">${ep.service}</span></div>
+    <div class="panel-path">${ep.fullPath || ep.path}</div>
+    ${ep.summary ? `<div class="panel-summary">${ep.summary}</div>` : ''}
+    ${ep.sourceFile ? `<div class="panel-source">${ep.sourceFile.split('/').slice(-2).join('/')}${ep.line ? ':' + ep.line : ''}</div>` : ''}
+  </div>`;
 
   // Request body
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Request Body</div>
-    \${renderPayload(ep.requestBody)}
-  </div>\`;
+    ${renderPayload(ep.requestBody)}
+  </div>`;
 
   // Response
-  html += \`<div class="panel-section">
+  html += `<div class="panel-section">
     <div class="panel-section-title">Response</div>
-    \${renderPayload(ep.response)}
-  </div>\`;
+    ${renderPayload(ep.response)}
+  </div>`;
 
   // Call chain
   const chains = callChains.filter(c => c.rootService === ep.service && c.rootEndpoint === ep.method + ' ' + (ep.fullPath || ep.path));
   if (chains.length > 0) {
-    const safeService = ep.service.replace(/'/g, "\\'");
-    const safeEndpoint = (ep.method + ' ' + (ep.fullPath || ep.path)).replace(/'/g, "\\'");
-    html += \`<div class="panel-section">
+    const safeService = ep.service.replace(/'/g, "\'");
+    const safeEndpoint = (ep.method + ' ' + (ep.fullPath || ep.path)).replace(/'/g, "\'");
+    html += `<div class="panel-section">
       <div class="panel-section-title" style="display:flex;align-items:center;justify-content:space-between">
         <span>Call Chain</span>
-        <button class="chain-play-btn" onclick="(function(){const ch=DATA.callChains.find(c=>c.rootService==='\${safeService}'&&c.rootEndpoint==='\${safeEndpoint}');if(ch)animateChainHops(ch.edges);})()" title="Animate call hops on graph">▶ Animate</button>
+        <button class="chain-play-btn" onclick="(function(){const ch=DATA.callChains.find(c=>c.rootService==='${safeService}'&&c.rootEndpoint==='${safeEndpoint}');if(ch)animateChainHops(ch.edges);})()" title="Animate call hops on graph">▶ Animate</button>
       </div>
-      <div class="chain-tree">\${renderChainNode(chains[0].tree, 0)}</div>
-    </div>\`;
+      <div class="chain-tree">${renderChainNode(chains[0].tree, 0)}</div>
+    </div>`;
     highlightChain(chains[0].edges);
   } else {
     // Highlight service on graph
@@ -1125,16 +1099,16 @@ function renderPayload(payload) {
   if (fields.length === 0 && !payload.typeName) return '<div class="no-payload">Not documented</div>';
 
   let html = '<div class="payload-box">';
-  if (payload.typeName) html += \`<div class="payload-type-name">\${payload.typeName}</div>\`;
+  if (payload.typeName) html += `<div class="payload-type-name">${payload.typeName}</div>`;
   if (fields.length === 0) {
     html += '<div class="no-payload" style="margin:0">Fields unknown</div>';
   } else {
     fields.forEach(f => {
-      html += \`<div class="payload-field">
-        <span class="field-name">\${f.name}</span>
-        <span class="field-type">\${f.type}</span>
-        \${f.required ? '<span class="field-req">*</span>' : ''}
-      </div>\`;
+      html += `<div class="payload-field">
+        <span class="field-name">${f.name}</span>
+        <span class="field-type">${f.type}</span>
+        ${f.required ? '<span class="field-req">*</span>' : ''}
+      </div>`;
     });
   }
   html += '</div>';
@@ -1148,14 +1122,14 @@ function renderChainNode(node, depth) {
   const cycleBadge = node.isCycle ? '<span class="chain-badge-cycle">↺ cycle</span>' : '';
   const unresBadge = node.isUnresolved ? '<span class="chain-badge-unresolved">? unresolved</span>' : '';
 
-  let html = \`<div class="chain-node \${indent}">
-    \${depth > 0 ? \`<span class="chain-connector">\${connector}</span>\` : ''}
+  let html = `<div class="chain-node ${indent}">
+    ${depth > 0 ? `<span class="chain-connector">${connector}</span>` : ''}
     <div>
-      <span class="chain-svc">\${node.service} · </span>
-      <span class="chain-ep" onclick="selectByLabel('\${node.service}', '\${node.endpoint}')">\${node.endpoint}</span>
-      \${leafBadge}\${cycleBadge}\${unresBadge}
+      <span class="chain-svc">${node.service} · </span>
+      <span class="chain-ep" onclick="selectByLabel('${node.service}', '${node.endpoint}')">${node.endpoint}</span>
+      ${leafBadge}${cycleBadge}${unresBadge}
     </div>
-  </div>\`;
+  </div>`;
 
   if (node.calls && node.calls.length > 0) {
     node.calls.forEach(child => { html += renderChainNode(child, depth + 1); });
@@ -1231,19 +1205,19 @@ cy.on('tap', 'node', function(evt) {
       }
     });
 
-    let html = \`<div class="panel-section">
+    let html = `<div class="panel-section">
       <div class="panel-section-title">Controller</div>
-      <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${ctrlName}</span></div>
-      <div class="panel-summary" style="margin-top:4px">\${svcId} · \${ctrlEndpoints.length} endpoints</div>
-    </div>\`;
+      <div class="panel-service"><div class="svc-dot" style="background:${color}"></div><span class="panel-service-name">${ctrlName}</span></div>
+      <div class="panel-summary" style="margin-top:4px">${svcId} · ${ctrlEndpoints.length} endpoints</div>
+    </div>`;
 
-    html += \`<div class="panel-section">
-      <div class="panel-section-title">Endpoints (\${ctrlEndpoints.length})</div>\`;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Endpoints (${ctrlEndpoints.length})</div>`;
     ctrlEndpoints.forEach(ep => {
-      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-      </div>\`;
+      html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+        <span class="method-badge method-${ep.method}">${ep.method}</span>
+        <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+      </div>`;
     });
     html += '</div>';
 
@@ -1261,11 +1235,11 @@ cy.on('tap', 'node', function(evt) {
   const color = colorMap[svcId];
   const svcEndpoints = endpointsData.filter(ep => ep.service === svcId);
 
-  let html = \`<div class="panel-section">
+  let html = `<div class="panel-section">
     <div class="panel-section-title">Service</div>
-    <div class="panel-service"><div class="svc-dot" style="background:\${color}"></div><span class="panel-service-name">\${svcId}</span></div>
-    <div class="panel-summary">\${svc.language} · \${svc.framework}</div>
-  </div>\`;
+    <div class="panel-service"><div class="svc-dot" style="background:${color}"></div><span class="panel-service-name">${svcId}</span></div>
+    <div class="panel-summary">${svc.language} · ${svc.framework}</div>
+  </div>`;
 
   // Group by controller in the panel too
   const ctrls = (controllerGroups && controllerGroups[svcId]) || [];
@@ -1273,24 +1247,24 @@ cy.on('tap', 'node', function(evt) {
     ctrls.forEach(ctrl => {
       const ctrlEps = svcEndpoints.filter(ep => ep.controller === ctrl.name);
       if (ctrlEps.length === 0) return;
-      html += \`<div class="panel-section">
-        <div class="panel-section-title">\${ctrl.name} (\${ctrlEps.length})</div>\`;
+      html += `<div class="panel-section">
+        <div class="panel-section-title">${ctrl.name} (${ctrlEps.length})</div>`;
       ctrlEps.forEach(ep => {
-        html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-          <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-          <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-        </div>\`;
+        html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+          <span class="method-badge method-${ep.method}">${ep.method}</span>
+          <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+        </div>`;
       });
       html += '</div>';
     });
   } else {
-    html += \`<div class="panel-section">
-      <div class="panel-section-title">Endpoints (\${svcEndpoints.length})</div>\`;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Endpoints (${svcEndpoints.length})</div>`;
     svcEndpoints.forEach(ep => {
-      html += \`<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='\${ep.id}'))">
-        <span class="method-badge method-\${ep.method}">\${ep.method}</span>
-        <span class="ep-path" title="\${ep.fullPath || ep.path}">\${ep.fullPath || ep.path}</span>
-      </div>\`;
+      html += `<div class="endpoint-item" style="padding-left:0; margin:0 0 2px; border-radius:4px; cursor:pointer" onclick="selectEndpoint(endpointsData.find(e=>e.id==='${ep.id}'))">
+        <span class="method-badge method-${ep.method}">${ep.method}</span>
+        <span class="ep-path" title="${ep.fullPath || ep.path}">${ep.fullPath || ep.path}</span>
+      </div>`;
     });
     html += '</div>';
   }
@@ -1409,19 +1383,19 @@ let ctxCurrentPurpose = 'onboarding';
 
 const CTX_PROMPTS = {
   onboarding: (ep, svc) =>
-    \`You are helping onboard a new developer to a microservices codebase.\\n\` +
-    \`Below is the full call chain context for \${ep.method} \${ep.fullPath || ep.path} in \${svc}.\\n\` +
-    \`Please explain: what this endpoint does, which services it touches and why, what a new developer needs to understand to work with it safely, and any gotchas or side effects they should know about.\\n\\n\`,
+    `You are helping onboard a new developer to a microservices codebase.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please explain: what this endpoint does, which services it touches and why, what a new developer needs to understand to work with it safely, and any gotchas or side effects they should know about.\n\n`,
 
   debug: (ep, svc) =>
-    \`You are helping debug a production issue in a microservices system.\\n\` +
-    \`Below is the full call chain context for \${ep.method} \${ep.fullPath || ep.path} in \${svc}.\\n\` +
-    \`Please identify: potential failure points in this chain, what could cause latency or errors at each hop, what to check first when this endpoint behaves unexpectedly, and any circular dependencies or unresolved calls to watch out for.\\n\\n\`,
+    `You are helping debug a production issue in a microservices system.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please identify: potential failure points in this chain, what could cause latency or errors at each hop, what to check first when this endpoint behaves unexpectedly, and any circular dependencies or unresolved calls to watch out for.\n\n`,
 
   docs: (ep, svc) =>
-    \`You are a technical writer documenting a microservices API.\\n\` +
-    \`Below is the full call chain context for \${ep.method} \${ep.fullPath || ep.path} in \${svc}.\\n\` +
-    \`Please write API documentation covering: the endpoint contract (request/response), which downstream services are called and what data flows between them, any async message events triggered, and the overall purpose of this operation in the system.\\n\\n\`,
+    `You are a technical writer documenting a microservices API.\n` +
+    `Below is the full call chain context for ${ep.method} ${ep.fullPath || ep.path} in ${svc}.\n` +
+    `Please write API documentation covering: the endpoint contract (request/response), which downstream services are called and what data flows between them, any async message events triggered, and the overall purpose of this operation in the system.\n\n`,
 };
 
 function serializeChainToText(node, depth) {
@@ -1431,15 +1405,15 @@ function serializeChainToText(node, depth) {
   if (node.isCycle) text += '  [↺ cycle]';
   if (node.isUnresolved) text += '  [? unresolved]';
   if (node.isLeaf && !node.isUnresolved) text += '  [leaf]';
-  text += '\\n';
+  text += '\n';
 
   // Include payload shapes if present
   if (depth === 0 && (node.requestBody || node.response)) {
     if (node.requestBody && node.requestBody.fields && node.requestBody.fields.length > 0) {
-      text += indent + '  Request: ' + node.requestBody.fields.map(f => f.name + ': ' + f.type + (f.required ? '*' : '')).join(', ') + '\\n';
+      text += indent + '  Request: ' + node.requestBody.fields.map(f => f.name + ': ' + f.type + (f.required ? '*' : '')).join(', ') + '\n';
     }
     if (node.response && node.response.fields && node.response.fields.length > 0) {
-      text += indent + '  Response: ' + node.response.fields.map(f => f.name + ': ' + f.type).join(', ') + '\\n';
+      text += indent + '  Response: ' + node.response.fields.map(f => f.name + ': ' + f.type).join(', ') + '\n';
     }
   }
 
@@ -1458,35 +1432,35 @@ function buildContextText(ep, purpose) {
   const promptFn = CTX_PROMPTS[purpose] || CTX_PROMPTS.onboarding;
   let text = promptFn(ep, ep.service);
 
-  text += '='.repeat(60) + '\\n';
-  text += 'CrossCtx Context: ' + ep.method + ' ' + (ep.fullPath || ep.path) + ' (' + ep.service + ')\\n';
-  text += '='.repeat(60) + '\\n\\n';
+  text += '='.repeat(60) + '\n';
+  text += 'CrossCtx Context: ' + ep.method + ' ' + (ep.fullPath || ep.path) + ' (' + ep.service + ')\n';
+  text += '='.repeat(60) + '\n\n';
 
   // Entry point
-  text += '--- Entry Point ---\\n';
-  text += 'Service:  ' + ep.service + '\\n';
-  text += 'Endpoint: ' + ep.method + ' ' + (ep.fullPath || ep.path) + '\\n';
-  if (ep.summary) text += 'Summary:  ' + ep.summary + '\\n';
+  text += '--- Entry Point ---\n';
+  text += 'Service:  ' + ep.service + '\n';
+  text += 'Endpoint: ' + ep.method + ' ' + (ep.fullPath || ep.path) + '\n';
+  if (ep.summary) text += 'Summary:  ' + ep.summary + '\n';
   if (ep.sourceFile) {
     const shortFile = ep.sourceFile.split('/').slice(-2).join('/');
-    text += 'Source:   ' + shortFile + (ep.line ? ':' + ep.line : '') + '\\n';
+    text += 'Source:   ' + shortFile + (ep.line ? ':' + ep.line : '') + '\n';
   }
   if (ep.requestBody && ep.requestBody.fields && ep.requestBody.fields.length > 0) {
-    text += 'Request body:\\n';
+    text += 'Request body:\n';
     ep.requestBody.fields.forEach(f => {
-      text += '  ' + f.name + ': ' + f.type + (f.required ? ' (required)' : '') + '\\n';
+      text += '  ' + f.name + ': ' + f.type + (f.required ? ' (required)' : '') + '\n';
     });
   }
   if (ep.response && ep.response.fields && ep.response.fields.length > 0) {
-    text += 'Response:\\n';
+    text += 'Response:\n';
     ep.response.fields.forEach(f => {
-      text += '  ' + f.name + ': ' + f.type + '\\n';
+      text += '  ' + f.name + ': ' + f.type + '\n';
     });
   }
 
   // Call chain
   if (chain) {
-    text += '\\n--- Call Chain ---\\n';
+    text += '\n--- Call Chain ---\n';
     text += serializeChainToText(chain.tree, 0);
 
     // Services involved
@@ -1494,47 +1468,47 @@ function buildContextText(ep, purpose) {
     involvedSvcs.add(ep.service);
     chain.edges.forEach(e => { involvedSvcs.add(e.fromService); involvedSvcs.add(e.toService); });
 
-    text += '\\n--- Services Involved (' + involvedSvcs.size + ') ---\\n';
+    text += '\n--- Services Involved (' + involvedSvcs.size + ') ---\n';
     involvedSvcs.forEach(svcId => {
       const svcMeta = services.find(s => s.id === svcId);
       const epCount = endpointsData.filter(e => e.service === svcId).length;
       if (svcMeta) {
-        text += svcId + ' (' + svcMeta.language + '/' + svcMeta.framework + ', ' + epCount + ' endpoints)\\n';
+        text += svcId + ' (' + svcMeta.language + '/' + svcMeta.framework + ', ' + epCount + ' endpoints)\n';
       } else {
-        text += svcId + '\\n';
+        text += svcId + '\n';
       }
     });
 
     // Confidence summary
     if (chain.edges.length > 0) {
       const avgConf = Math.round(chain.edges.reduce((s, e) => s + (e.confidence || 0), 0) / chain.edges.length * 100);
-      text += '\\n--- Resolution ---\\n';
-      text += 'Call hops: ' + chain.edges.length + '\\n';
-      text += 'Avg confidence: ' + avgConf + '%\\n';
+      text += '\n--- Resolution ---\n';
+      text += 'Call hops: ' + chain.edges.length + '\n';
+      text += 'Avg confidence: ' + avgConf + '%\n';
     }
   } else {
-    text += '\\n--- Call Chain ---\\n';
-    text += '(No outbound calls detected from this endpoint)\\n';
+    text += '\n--- Call Chain ---\n';
+    text += '(No outbound calls detected from this endpoint)\n';
 
-    text += '\\n--- Service ---\\n';
+    text += '\n--- Service ---\n';
     const svcMeta = services.find(s => s.id === ep.service);
     if (svcMeta) {
-      text += ep.service + ' (' + svcMeta.language + '/' + svcMeta.framework + ')\\n';
+      text += ep.service + ' (' + svcMeta.language + '/' + svcMeta.framework + ')\n';
     }
   }
 
   // Async message events
   if (ep.messageEvents && ep.messageEvents.length > 0) {
-    text += '\\n--- Message Events ---\\n';
+    text += '\n--- Message Events ---\n';
     ep.messageEvents.forEach(me => {
       text += me.direction.toUpperCase() + ' ' + me.pattern + ':' + me.topic;
       if (me.payloadType) text += ' (' + me.payloadType + ')';
-      text += '\\n';
+      text += '\n';
     });
   }
 
-  text += '\\n' + '='.repeat(60) + '\\n';
-  text += 'Generated by CrossCtx — https://github.com/nareshtammineni01/crossctx\\n';
+  text += '\n' + '='.repeat(60) + '\n';
+  text += 'Generated by CrossCtx — https://github.com/nareshtammineni01/crossctx\n';
   text += '='.repeat(60);
 
   return text;
@@ -1599,232 +1573,4 @@ document.getElementById('ctx-copy-btn').addEventListener('click', () => {
 });
 </script>
 </body>
-</html>`;
-}
-
-// ─── Data builders ────────────────────────────────────────────────────────────
-
-// ─── Controller group builder ────────────────────────────────────────────────
-
-function deriveControllerName(sourceFile: string | undefined): string {
-  if (!sourceFile) return "Other";
-  // Match ClassName.java / ClassName.ts / ClassName.cs / ClassName.py
-  const m = sourceFile.match(
-    /([A-Za-z0-9_]+)(?:Controller|Router|Views?|Resource)[\w]*\.(java|ts|cs|py|kt)$/i,
-  );
-  if (m) return m[1] + "Controller";
-  // Fallback: just use the filename without extension
-  const base = sourceFile.replace(/\\/g, "/").split("/").pop() ?? "Other";
-  return base.replace(/\.\w+$/, "");
-}
-
-function buildControllerGroups(endpointsData: ReturnType<typeof buildEndpointsData>) {
-  // Map: serviceId → Array<{ name: string, endpoints: string[] }>
-  const result: Record<string, Array<{ name: string; endpoints: string[] }>> = {};
-
-  for (const ep of endpointsData) {
-    const svc = ep.service;
-    if (!result[svc]) result[svc] = [];
-
-    const ctrlName = (ep as { controller?: string }).controller || "Other";
-    let ctrl = result[svc].find((c) => c.name === ctrlName);
-    if (!ctrl) {
-      ctrl = { name: ctrlName, endpoints: [] };
-      result[svc].push(ctrl);
-    }
-    ctrl.endpoints.push(ep.id);
-  }
-
-  // Sort controllers alphabetically per service
-  for (const svc of Object.keys(result)) {
-    result[svc].sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  return result;
-}
-
-function buildServiceNodes(scanResults: CodeScanResult[], output: CrossCtxOutput) {
-  // Prefer code scan results; fall back to OpenAPI services
-  if (scanResults.length > 0) {
-    return scanResults.map((r) => ({
-      id: r.serviceName,
-      endpointCount: r.endpoints.length,
-      language: r.language.language,
-      framework: r.language.framework,
-    }));
-  }
-
-  return output.services.map((s) => ({
-    id: s.name,
-    endpointCount: s.endpointCount,
-    language: "unknown",
-    framework: "unknown",
-  }));
-}
-
-function buildGraphEdges(
-  callChains: CallChain[],
-  scanResults: CodeScanResult[],
-  output: CrossCtxOutput,
-) {
-  const seen = new Set<string>();
-  const edges: Array<{
-    fromService: string;
-    toService: string;
-    fromEndpoint: string;
-    confidence: number;
-    rawUrl?: string;
-    callPattern?: string;
-    type?: "sync" | "async";
-  }> = [];
-
-  // From call chains
-  for (const chain of callChains) {
-    for (const edge of chain.edges) {
-      const key = `${edge.fromService}→${edge.toService}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        edges.push({
-          fromService: edge.fromService,
-          toService: edge.toService,
-          fromEndpoint: edge.from.split(":")[1] ?? "",
-          confidence: edge.confidence,
-          rawUrl: edge.rawUrl,
-          callPattern: (edge as unknown as Record<string, unknown>)["callPattern"] as
-            | string
-            | undefined,
-          type: "sync",
-        });
-      }
-    }
-  }
-
-  // From message queue events (async dependencies)
-  const messageMap = new Map<string, { publishers: Set<string>; subscribers: Set<string> }>();
-  for (const result of scanResults) {
-    const events = result.messageEvents ?? [];
-    for (const event of events) {
-      if (!messageMap.has(event.topic)) {
-        messageMap.set(event.topic, { publishers: new Set(), subscribers: new Set() });
-      }
-      const entry = messageMap.get(event.topic)!;
-      if (event.direction === "publish") {
-        entry.publishers.add(result.serviceName);
-      } else {
-        entry.subscribers.add(result.serviceName);
-      }
-    }
-  }
-
-  // Create async edges between publishers and subscribers
-  for (const [topic, { publishers, subscribers }] of messageMap) {
-    for (const fromService of publishers) {
-      for (const toService of subscribers) {
-        const key = `${fromService}→${toService}:async`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          edges.push({
-            fromService,
-            toService,
-            fromEndpoint: `topic: ${topic}`,
-            confidence: 0.8,
-            rawUrl: topic,
-            callPattern: "message-queue",
-            type: "async",
-          });
-        }
-      }
-    }
-  }
-
-  // From legacy OpenAPI dependencies
-  for (const dep of output.dependencies) {
-    const key = `${dep.from}→${dep.to}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      edges.push({
-        fromService: dep.from,
-        toService: dep.to,
-        fromEndpoint: dep.evidence,
-        confidence: 0.5,
-        rawUrl: dep.evidence,
-        type: "sync",
-      });
-    }
-  }
-
-  return edges;
-}
-
-function buildEndpointsData(scanResults: CodeScanResult[], output: CrossCtxOutput) {
-  if (scanResults.length > 0) {
-    let idx = 0;
-    return scanResults.flatMap((r) =>
-      r.endpoints.map((ep) => ({
-        id: `ep${idx++}`,
-        service: r.serviceName,
-        method: ep.method,
-        path: ep.path,
-        fullPath: ep.fullPath,
-        summary: ep.summary,
-        sourceFile: ep.sourceFile,
-        line: ep.line,
-        controller: deriveControllerName(ep.sourceFile),
-        requestBody: serializePayload(ep.requestBody),
-        response: serializePayload(ep.response),
-        hasChain: ep.outboundCalls.length > 0,
-        messageEvents:
-          ep.messageEvents?.map((me) => ({
-            topic: me.topic,
-            direction: me.direction,
-            pattern: me.pattern,
-            payloadType: me.payloadType,
-          })) ?? [],
-      })),
-    );
-  }
-
-  // Fall back to OpenAPI endpoints
-  return output.endpoints.map((ep, i) => ({
-    id: `ep${i}`,
-    service: ep.service,
-    method: ep.method,
-    path: ep.path,
-    fullPath: ep.path,
-    summary: ep.summary,
-    sourceFile: undefined,
-    line: undefined,
-    requestBody: ep.requestBody
-      ? {
-          typeName: undefined,
-          fields: Object.entries(ep.requestBody.properties ?? {}).map(([name, type]) => ({
-            name,
-            type,
-            required: true,
-          })),
-          source: "openapi",
-        }
-      : null,
-    response: ep.response
-      ? {
-          typeName: undefined,
-          fields: Object.entries(ep.response.properties ?? {}).map(([name, type]) => ({
-            name,
-            type,
-            required: false,
-          })),
-          source: "openapi",
-        }
-      : null,
-    hasChain: false,
-  }));
-}
-
-function serializePayload(payload: import("../types/index.js").PayloadShape | undefined) {
-  if (!payload) return null;
-  return {
-    typeName: payload.typeName,
-    fields: payload.fields,
-    source: payload.source,
-  };
-}
+</html>

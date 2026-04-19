@@ -613,23 +613,42 @@ function parseRecordParams(params: string): PayloadField[] {
 
 function parseJavaClassBody(body: string): PayloadField[] {
   const fields: PayloadField[] = [];
-  // private String email; / private final Long id; / protected Integer count;
+
+  // Split body into per-field sections by scanning for field declarations
+  // private String email; / private final Long id; / @NotNull private String name;
+  // Also handles @JsonProperty("snake_case") overrides and @NotNull/@NotBlank required markers
   const fieldRegex =
-    /(?:@\w+(?:\([^)]*\))?\s*)*(?:private|protected|public)\s+(?:final\s+)?(?:static\s+)?(\w[\w<>,\s]*?)\s+(\w+)\s*[;=]/g;
+    /((?:@[\w.]+(?:\s*\([^)]*\))?\s*)*)(?:private|protected|public)\s+(?:final\s+)?(?:static\s+)?(\w[\w<>,.\s]*?)\s+(\w+)\s*(?:=[^;]*)?;/g;
   let match: RegExpExecArray | null;
 
   while ((match = fieldRegex.exec(body)) !== null) {
-    const type = match[1].trim();
-    const name = match[2].trim();
+    const annotations = match[1] ?? "";
+    const type = match[2].trim();
+    const rawName = match[3].trim();
 
     // Skip common non-DTO fields
-    if (["serialVersionUID", "log", "logger", "LOGGER"].includes(name)) continue;
-    if (type.includes("(") || ["void", "class"].includes(type)) continue;
+    if (["serialVersionUID", "log", "logger", "LOGGER", "mapper", "mapper"].includes(rawName))
+      continue;
+    if (type.includes("(") || ["void", "class", "static"].includes(type)) continue;
+    // Skip method references that got picked up (e.g. "final Predicate<T>")
+    if (/^[a-z]/.test(type)) {
+      const primitives = ["int","long","double","float","boolean","char","byte","short"];
+      if (!primitives.includes(type.replace(/\[\]$/, "").split("<")[0])) continue;
+    }
+
+    // Check for @JsonProperty("name") override
+    const jsonPropMatch = annotations.match(/@JsonProperty\s*\(\s*["']([^"']+)["']\s*\)/);
+    const name = jsonPropMatch ? jsonPropMatch[1] : rawName;
+
+    // required = true if @NotNull, @NotBlank, @NotEmpty, or @NonNull present
+    const required =
+      /@NotNull|@NotBlank|@NotEmpty|@NonNull/.test(annotations) ||
+      /@Column\s*\([^)]*nullable\s*=\s*false/.test(annotations);
 
     fields.push({
       name,
       type: simplifyJavaType(type),
-      required: false, // can't always tell from Java class alone
+      required,
     });
   }
 
