@@ -9,7 +9,7 @@ import type { MessageEvent } from "../types/index.js";
 
 export function extractMessageEvents(
   fileContents: Map<string, string>,
-  language: "java" | "csharp" | "python" | "typescript" | "go"
+  language: "java" | "csharp" | "python" | "typescript" | "go",
 ): MessageEvent[] {
   const events: MessageEvent[] = [];
 
@@ -50,7 +50,7 @@ function extractJavaMessageEvents(content: string, filePath: string): MessageEve
 
     // @KafkaListener(topics = "orders.created")
     const kafkaListenerMatch = line.match(
-      /@KafkaListener\s*\(\s*(?:topics|value)\s*=\s*["{]([^"}]+)["}]/i
+      /@KafkaListener\s*\(\s*(?:topics|value)\s*=\s*["{]([^"}]+)["}]/i,
     );
     if (kafkaListenerMatch) {
       const topics = kafkaListenerMatch[1].split(/[,\s]+/).filter(Boolean);
@@ -67,7 +67,7 @@ function extractJavaMessageEvents(content: string, filePath: string): MessageEve
 
     // @RabbitListener(queues = "order-queue")
     const rabbitListenerMatch = line.match(
-      /@RabbitListener\s*\(\s*(?:queues|value)\s*=\s*["{]([^"}]+)["}]/i
+      /@RabbitListener\s*\(\s*(?:queues|value)\s*=\s*["{]([^"}]+)["}]/i,
     );
     if (rabbitListenerMatch) {
       const queues = rabbitListenerMatch[1].split(/[,\s]+/).filter(Boolean);
@@ -83,9 +83,7 @@ function extractJavaMessageEvents(content: string, filePath: string): MessageEve
     }
 
     // kafkaTemplate.send("orders.created", message) or send("orders.created", partition, message)
-    const kafkaSendMatch = line.match(
-      /kafkaTemplate\.send\s*\(\s*["']([^"']+)["']/i
-    );
+    const kafkaSendMatch = line.match(/kafkaTemplate\.send\s*\(\s*["']([^"']+)["']/i);
     if (kafkaSendMatch) {
       events.push({
         topic: kafkaSendMatch[1],
@@ -97,9 +95,7 @@ function extractJavaMessageEvents(content: string, filePath: string): MessageEve
     }
 
     // rabbitTemplate.convertAndSend("orders.created", message) or convertAndSend(exchange, routingKey, message)
-    const rabbitSendMatch = line.match(
-      /rabbitTemplate\.convertAndSend\s*\(\s*["']([^"']+)["']/i
-    );
+    const rabbitSendMatch = line.match(/rabbitTemplate\.convertAndSend\s*\(\s*["']([^"']+)["']/i);
     if (rabbitSendMatch) {
       events.push({
         topic: rabbitSendMatch[1],
@@ -112,7 +108,7 @@ function extractJavaMessageEvents(content: string, filePath: string): MessageEve
 
     // rabbitTemplate.convertAndSend(exchange, routingKey, message)
     const rabbitExchangeMatch = line.match(
-      /rabbitTemplate\.convertAndSend\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/i
+      /rabbitTemplate\.convertAndSend\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/i,
     );
     if (rabbitExchangeMatch && !rabbitSendMatch) {
       events.push({
@@ -165,9 +161,7 @@ function extractCSharpMessageEvents(content: string, filePath: string): MessageE
     }
 
     // producer.ProduceAsync("orders.created", message)
-    const kafkaProduceMatch = line.match(
-      /producer\.ProduceAsync\s*\(\s*["']([^"']+)["']/i
-    );
+    const kafkaProduceMatch = line.match(/producer\.ProduceAsync\s*\(\s*["']([^"']+)["']/i);
     if (kafkaProduceMatch) {
       events.push({
         topic: kafkaProduceMatch[1],
@@ -180,7 +174,7 @@ function extractCSharpMessageEvents(content: string, filePath: string): MessageE
 
     // channel.BasicPublish(exchange: "orders", routingKey: "created", ...)
     const basicPubMatch = line.match(
-      /channel\.BasicPublish\s*\([^)]*exchange:\s*["']([^"']+)["']\s*,\s*routingKey:\s*["']([^"']+)["']/i
+      /channel\.BasicPublish\s*\([^)]*exchange:\s*["']([^"']+)["']\s*,\s*routingKey:\s*["']([^"']+)["']/i,
     );
     if (basicPubMatch) {
       events.push({
@@ -194,7 +188,7 @@ function extractCSharpMessageEvents(content: string, filePath: string): MessageE
 
     // channel.BasicConsume(queue: "order-queue", ...)
     const basicConsumeMatch = line.match(
-      /channel\.BasicConsume\s*\([^)]*queue:\s*["']([^"']+)["']/i
+      /channel\.BasicConsume\s*\([^)]*queue:\s*["']([^"']+)["']/i,
     );
     if (basicConsumeMatch) {
       events.push({
@@ -207,13 +201,14 @@ function extractCSharpMessageEvents(content: string, filePath: string): MessageE
     }
 
     // await _bus.Publish(new OrderCreatedEvent(...)) (MassTransit)
-    const massTransitMatch = line.match(
-      /\._?bus\.Publish\s*\(\s*new\s+(\w+)\s*\(/i
-    );
+    const massTransitMatch = line.match(/\._?bus\.Publish\s*\(\s*new\s+(\w+)\s*\(/i);
     if (massTransitMatch) {
       const eventType = massTransitMatch[1];
       // Convert PascalCase to topic-name convention
-      const topicName = eventType.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, "");
+      const topicName = eventType
+        .replace(/([A-Z])/g, "-$1")
+        .toLowerCase()
+        .replace(/^-/, "");
       events.push({
         topic: topicName,
         direction: "publish",
@@ -273,9 +268,7 @@ function extractPythonMessageEvents(content: string, filePath: string): MessageE
     }
 
     // consumer.subscribe(["orders.created"]) (confluent-kafka)
-    const kafkaSubMatch = line.match(
-      /consumer\.subscribe\s*\(\s*\[\s*["']([^"']+)["']/
-    );
+    const kafkaSubMatch = line.match(/consumer\.subscribe\s*\(\s*\[\s*["']([^"']+)["']/);
     if (kafkaSubMatch) {
       events.push({
         topic: kafkaSubMatch[1],
@@ -287,9 +280,7 @@ function extractPythonMessageEvents(content: string, filePath: string): MessageE
     }
 
     // producer.produce("orders.created", value=...) (confluent-kafka)
-    const kafkaProdMatch = line.match(
-      /producer\.produce\s*\(\s*["']([^"']+)["']/
-    );
+    const kafkaProdMatch = line.match(/producer\.produce\s*\(\s*["']([^"']+)["']/);
     if (kafkaProdMatch) {
       events.push({
         topic: kafkaProdMatch[1],
@@ -302,7 +293,7 @@ function extractPythonMessageEvents(content: string, filePath: string): MessageE
 
     // channel.basic_consume(queue="order-queue", ...) (pika / RabbitMQ)
     const basicConsumeMatch = line.match(
-      /channel\.basic_consume\s*\(\s*queue\s*=\s*["']([^"']+)["']/
+      /channel\.basic_consume\s*\(\s*queue\s*=\s*["']([^"']+)["']/,
     );
     if (basicConsumeMatch) {
       events.push({
@@ -316,7 +307,7 @@ function extractPythonMessageEvents(content: string, filePath: string): MessageE
 
     // channel.basic_publish(exchange="", routing_key="order-queue", ...) (pika / RabbitMQ)
     const basicPubMatch = line.match(
-      /channel\.basic_publish\s*\(\s*exchange\s*=\s*["']([^"']+)["']\s*,\s*routing_key\s*=\s*["']([^"']+)["']/
+      /channel\.basic_publish\s*\(\s*exchange\s*=\s*["']([^"']+)["']\s*,\s*routing_key\s*=\s*["']([^"']+)["']/,
     );
     if (basicPubMatch) {
       const exchange = basicPubMatch[1];
@@ -348,7 +339,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
 
     // @EventPattern("orders.created") or @MessagePattern("orders.created") (NestJS)
     const eventPatternMatch = line.match(
-      /@(?:EventPattern|MessagePattern)\s*\(\s*["']([^"']+)["']/
+      /@(?:EventPattern|MessagePattern)\s*\(\s*["']([^"']+)["']/,
     );
     if (eventPatternMatch) {
       events.push({
@@ -361,9 +352,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
     }
 
     // this.client.emit("orders.created", data) or this.client.emit({pattern: "orders.created"}, data)
-    const emitMatch = line.match(
-      /\.emit\s*\(\s*["']([^"']+)["']/
-    );
+    const emitMatch = line.match(/\.emit\s*\(\s*["']([^"']+)["']/);
     if (emitMatch && !line.includes("@EventPattern")) {
       events.push({
         topic: emitMatch[1],
@@ -376,7 +365,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
 
     // kafkaConsumer.subscribe({ topic: "orders.created" })
     const kafkaSubMatch = line.match(
-      /kafkaConsumer\.subscribe\s*\(\s*\{\s*topic:\s*["']([^"']+)["']/
+      /kafkaConsumer\.subscribe\s*\(\s*\{\s*topic:\s*["']([^"']+)["']/,
     );
     if (kafkaSubMatch) {
       events.push({
@@ -389,9 +378,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
     }
 
     // kafkaProducer.send({ topic: "orders.created", messages: [...] })
-    const kafkaSendMatch = line.match(
-      /kafkaProducer\.send\s*\(\s*\{\s*topic:\s*["']([^"']+)["']/
-    );
+    const kafkaSendMatch = line.match(/kafkaProducer\.send\s*\(\s*\{\s*topic:\s*["']([^"']+)["']/);
     if (kafkaSendMatch) {
       events.push({
         topic: kafkaSendMatch[1],
@@ -403,9 +390,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
     }
 
     // channel.consume("order-queue", ...) (amqplib)
-    const consumeMatch = line.match(
-      /channel\.consume\s*\(\s*["']([^"']+)["']/
-    );
+    const consumeMatch = line.match(/channel\.consume\s*\(\s*["']([^"']+)["']/);
     if (consumeMatch) {
       events.push({
         topic: consumeMatch[1],
@@ -417,9 +402,7 @@ function extractTypeScriptMessageEvents(content: string, filePath: string): Mess
     }
 
     // channel.sendToQueue("order-queue", ...) (amqplib)
-    const sendToQueueMatch = line.match(
-      /channel\.sendToQueue\s*\(\s*["']([^"']+)["']/
-    );
+    const sendToQueueMatch = line.match(/channel\.sendToQueue\s*\(\s*["']([^"']+)["']/);
     if (sendToQueueMatch) {
       events.push({
         topic: sendToQueueMatch[1],
@@ -447,9 +430,7 @@ function extractGoMessageEvents(content: string, filePath: string): MessageEvent
     const lineNum = i + 1;
 
     // sarama.NewConsumer(...) with topics subscribed
-    const saramaConsumerMatch = line.match(
-      /consumer\.Topics\s*\(\s*\)\s*,.*topics.*\[/
-    );
+    const saramaConsumerMatch = line.match(/consumer\.Topics\s*\(\s*\)\s*,.*topics.*\[/);
     if (saramaConsumerMatch) {
       // Look for topic strings in following lines
       for (let j = i; j < Math.min(i + 5, lines.length); j++) {
@@ -467,9 +448,7 @@ function extractGoMessageEvents(content: string, filePath: string): MessageEvent
     }
 
     // producer.Input() <- &sarama.ProducerMessage{Topic: "orders.created"}
-    const producerMatch = line.match(
-      /Topic:\s*["']([^"']+)["']/
-    );
+    const producerMatch = line.match(/Topic:\s*["']([^"']+)["']/);
     if (producerMatch && line.includes("ProducerMessage")) {
       events.push({
         topic: producerMatch[1],
@@ -481,9 +460,7 @@ function extractGoMessageEvents(content: string, filePath: string): MessageEvent
     }
 
     // ch.Consume(q.Name, ...) (amqp)
-    const amqpConsumeMatch = line.match(
-      /ch\.Consume\s*\(\s*([^,]+)\s*,/
-    );
+    const amqpConsumeMatch = line.match(/ch\.Consume\s*\(\s*([^,]+)\s*,/);
     if (amqpConsumeMatch) {
       const queueVar = amqpConsumeMatch[1].trim();
       // Try to infer queue name from q.Name pattern
@@ -499,9 +476,7 @@ function extractGoMessageEvents(content: string, filePath: string): MessageEvent
     }
 
     // ch.Publish("", q.Name, ...) (amqp)
-    const amqpPubMatch = line.match(
-      /ch\.Publish\s*\(\s*["']([^"']*?)["']\s*,\s*([^,]+)/
-    );
+    const amqpPubMatch = line.match(/ch\.Publish\s*\(\s*["']([^"']*?)["']\s*,\s*([^,]+)/);
     if (amqpPubMatch) {
       const exchange = amqpPubMatch[1];
       const routingKey = amqpPubMatch[2].trim();

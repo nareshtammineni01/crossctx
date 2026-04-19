@@ -8,8 +8,7 @@ import type {
   PayloadShape,
   PayloadField,
   ServiceUrlHint,
-  DetectedLanguage
-
+  DetectedLanguage,
 } from "../types/index.js";
 import { extractMessageEvents } from "./messaging.js";
 
@@ -32,7 +31,7 @@ const IGNORE = [
 export async function parseCSharpProject(
   projectPath: string,
   language: DetectedLanguage,
-  serviceName: string
+  serviceName: string,
 ): Promise<CodeScanResult> {
   const csFiles = await fg(["**/*.cs"], {
     cwd: projectPath,
@@ -44,14 +43,16 @@ export async function parseCSharpProject(
   // Also read appsettings for URL hints
   const configFiles = await fg(
     ["**/appsettings*.json", "**/appsettings*.Development.json", "**/appsettings*.Production.json"],
-    { cwd: projectPath, ignore: IGNORE, absolute: true, onlyFiles: true }
+    { cwd: projectPath, ignore: IGNORE, absolute: true, onlyFiles: true },
   );
 
   const fileContents = new Map<string, string>();
   for (const file of [...csFiles, ...configFiles]) {
     try {
       fileContents.set(file, await readFile(file, "utf-8"));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Extract DTOs first
@@ -89,7 +90,7 @@ export async function parseCSharpProject(
 function extractCSharpEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -112,7 +113,8 @@ function isControllerFile(filePath: string, content: string): boolean {
     fileName.endsWith("controller") ||
     content.includes("[ApiController]") ||
     content.includes("[Controller]") ||
-    (content.includes(": ControllerBase") || content.includes(": Controller"))
+    content.includes(": ControllerBase") ||
+    content.includes(": Controller")
   );
 }
 
@@ -149,7 +151,7 @@ function extractHandlers(
   filePath: string,
   serviceName: string,
   controllerPrefix: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
@@ -160,7 +162,7 @@ function extractHandlers(
 
     // Match [HttpGet], [HttpPost("path")], [HttpGet("{id}")]
     const attrMatch = line.match(
-      /\[(HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|HttpHead|HttpOptions)\s*(?:\(\s*["']([^"']*?)["']\s*\))?]/
+      /\[(HttpGet|HttpPost|HttpPut|HttpDelete|HttpPatch|HttpHead|HttpOptions)\s*(?:\(\s*["']([^"']*?)["']\s*\))?]/,
     );
     if (!attrMatch) continue;
 
@@ -169,7 +171,10 @@ function extractHandlers(
     const fullPath = combinePaths(controllerPrefix, routePath);
 
     // Find method signature
-    const { methodName, returnType, paramLine, bodyStartLine } = extractCSharpMethodSignature(lines, i + 1);
+    const { methodName, returnType, paramLine, bodyStartLine } = extractCSharpMethodSignature(
+      lines,
+      i + 1,
+    );
 
     // Request body from [FromBody] param
     const requestBody = extractRequestBody(paramLine, dtoMap);
@@ -183,7 +188,8 @@ function extractHandlers(
     // Scope outbound calls to this method's body using brace-depth tracking
     const methodBodyRange = getMethodBodyLineRange(lines, bodyStartLine);
     const scopedCalls = allOutboundCalls.filter(
-      c => c.line !== undefined && c.line >= methodBodyRange.start && c.line <= methodBodyRange.end
+      (c) =>
+        c.line !== undefined && c.line >= methodBodyRange.start && c.line <= methodBodyRange.end,
     );
 
     endpoints.push({
@@ -207,7 +213,7 @@ function extractHandlers(
 
 function extractCSharpMethodSignature(
   lines: string[],
-  startIdx: number
+  startIdx: number,
 ): { methodName: string; returnType: string; paramLine: string; bodyStartLine: number } {
   let methodName = "unknown";
   let returnType = "void";
@@ -220,7 +226,7 @@ function extractCSharpMethodSignature(
 
     // public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserDto dto)
     const sig = line.match(
-      /(?:public|private|protected)?\s*(?:async\s+)?(?:Task<)?(?:ActionResult<)?([\w<>[],\s?]+?)>?\s*(\w+)\s*\(([^)]*)/
+      /(?:public|private|protected)?\s*(?:async\s+)?(?:Task<)?(?:ActionResult<)?([\w<>[],\s?]+?)>?\s*(\w+)\s*\(([^)]*)/,
     );
     if (sig) {
       returnType = sig[1].trim();
@@ -247,7 +253,10 @@ function extractCSharpMethodSignature(
   return { methodName, returnType, paramLine, bodyStartLine };
 }
 
-function extractRequestBody(paramLine: string, dtoMap: Map<string, PayloadShape>): PayloadShape | undefined {
+function extractRequestBody(
+  paramLine: string,
+  dtoMap: Map<string, PayloadShape>,
+): PayloadShape | undefined {
   // [FromBody] CreateUserDto dto
   const match = paramLine.match(/\[FromBody]\s+([\w<>?]+)\s+\w+/);
   if (!match) return undefined;
@@ -257,8 +266,12 @@ function extractRequestBody(paramLine: string, dtoMap: Map<string, PayloadShape>
   return { typeName, fields: [], source: "dto-class" };
 }
 
-function extractResponseType(returnType: string, dtoMap: Map<string, PayloadShape>): PayloadShape | undefined {
-  if (!returnType || ["void", "IActionResult", "ActionResult"].includes(returnType)) return undefined;
+function extractResponseType(
+  returnType: string,
+  dtoMap: Map<string, PayloadShape>,
+): PayloadShape | undefined {
+  if (!returnType || ["void", "IActionResult", "ActionResult"].includes(returnType))
+    return undefined;
 
   // ActionResult<UserDto> / Task<UserDto> / IEnumerable<UserDto>
   const typeName = unwrapGeneric(returnType);
@@ -304,22 +317,54 @@ function extractSummary(lines: string[], attrLine: number): string | undefined {
 function extractCSharpOutboundCalls(content: string, filePath: string): OutboundCall[] {
   const calls: OutboundCall[] = [];
 
-  const patterns: Array<{ regex: RegExp; pattern: string; methodGroup?: number; urlGroup: number }> = [
+  const patterns: Array<{
+    regex: RegExp;
+    pattern: string;
+    methodGroup?: number;
+    urlGroup: number;
+  }> = [
     // string interpolation with base URL FIRST (most specific):
     // $"{_baseUrl}/api/orders" or $"{_orderServiceUrl}/api/orders/{id}"
-    { regex: /\$"\{(?:_|this\.)?(\w*(?:Url|Host|BaseUrl|Endpoint)\w*)\}([/][^"$\n]+)"/g, pattern: "interpolated", urlGroup: 1 },
+    {
+      regex: /\$"\{(?:_|this\.)?(\w*(?:Url|Host|BaseUrl|Endpoint)\w*)\}([/][^"$\n]+)"/g,
+      pattern: "interpolated",
+      urlGroup: 1,
+    },
     // _httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Post, "url"))
-    { regex: /HttpMethod\.(Get|Post|Put|Delete|Patch)\s*,\s*["']([^"'\n]+)["']/g, pattern: "HttpClient.SendAsync", methodGroup: 1, urlGroup: 2 },
+    {
+      regex: /HttpMethod\.(Get|Post|Put|Delete|Patch)\s*,\s*["']([^"'\n]+)["']/g,
+      pattern: "HttpClient.SendAsync",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/orders")
-    { regex: /new\s+HttpRequestMessage\s*\(\s*HttpMethod\.\w+\s*,\s*(?:\$?")?([^",$\n)]+)/g, pattern: "HttpRequestMessage", urlGroup: 1 },
+    {
+      regex: /new\s+HttpRequestMessage\s*\(\s*HttpMethod\.\w+\s*,\s*(?:\$?")?([^",$\n)]+)/g,
+      pattern: "HttpRequestMessage",
+      urlGroup: 1,
+    },
     // Refit: [Get("/api/users")] on interface methods
-    { regex: /\[(?:Get|Post|Put|Delete|Patch)\s*\(\s*["']([^"']+)["']\s*\)]/g, pattern: "Refit", urlGroup: 1 },
+    {
+      regex: /\[(?:Get|Post|Put|Delete|Patch)\s*\(\s*["']([^"']+)["']\s*\)]/g,
+      pattern: "Refit",
+      urlGroup: 1,
+    },
     // RestSharp: client.GetAsync<T>(new RestRequest("/endpoint"))
     { regex: /new\s+RestRequest\s*\(\s*["']([^"']+)["']/g, pattern: "RestSharp", urlGroup: 1 },
     // IHttpClientFactory named client: _factory.CreateClient("order-service") — lowest priority, just captures service name
-    { regex: /_factory\.CreateClient\s*\(\s*["']([^"']+)["']\s*\)/g, pattern: "IHttpClientFactory", urlGroup: 1 },
+    {
+      regex: /_factory\.CreateClient\s*\(\s*["']([^"']+)["']\s*\)/g,
+      pattern: "IHttpClientFactory",
+      urlGroup: 1,
+    },
     // _httpClient.GetAsync($"...") — catch remaining cases not covered by interpolated pattern
-    { regex: /\b\w*[Hh]ttp[Cc]lient\w*\.(Get|Post|Put|Delete|Patch)Async\s*\(\s*["']([^"',$\n)]{4,})["']/g, pattern: "HttpClient", methodGroup: 1, urlGroup: 2 },
+    {
+      regex:
+        /\b\w*[Hh]ttp[Cc]lient\w*\.(Get|Post|Put|Delete|Patch)Async\s*\(\s*["']([^"',$\n)]{4,})["']/g,
+      pattern: "HttpClient",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
   ];
 
   for (const { regex, pattern, methodGroup, urlGroup } of patterns) {
@@ -386,7 +431,6 @@ function extractCSharpDTOs(fileContents: Map<string, string>): Map<string, Paylo
   return dtoMap;
 }
 
-
 function extractCSharpPayloadShapes(content: string): PayloadShape[] {
   const shapes: PayloadShape[] = [];
 
@@ -412,11 +456,17 @@ function extractCSharpPayloadShapes(content: string): PayloadShape[] {
   }
 
   // C# classes
-  const classRegex = /(?:public|internal)\s+(?:partial\s+)?class\s+(\w+)(?:\s*:\s*[^{]+)?\s*\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/gs;
+  const classRegex =
+    /(?:public|internal)\s+(?:partial\s+)?class\s+(\w+)(?:\s*:\s*[^{]+)?\s*\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/gs;
 
   while ((match = classRegex.exec(content)) !== null) {
     const typeName = match[1];
-    if (["Controller", "Service", "Repository", "Startup", "Program"].some(s => typeName.endsWith(s))) continue;
+    if (
+      ["Controller", "Service", "Repository", "Startup", "Program"].some((s) =>
+        typeName.endsWith(s),
+      )
+    )
+      continue;
 
     const body = match[2];
     const fields = parseCSharpClassBody(body);
@@ -429,16 +479,19 @@ function extractCSharpPayloadShapes(content: string): PayloadShape[] {
 }
 
 function parseRecordParams(params: string): PayloadField[] {
-  return params.split(",").map(p => {
-    // string Email, int? Age
-    const m = p.trim().match(/([\w?<>[]]+)\s+(\w+)/);
-    if (!m) return null;
-    return {
-      name: m[2],
-      type: simplifyCSharpType(m[1]),
-      required: !m[1].endsWith("?"),
-    };
-  }).filter(Boolean) as PayloadField[];
+  return params
+    .split(",")
+    .map((p) => {
+      // string Email, int? Age
+      const m = p.trim().match(/([\w?<>[]]+)\s+(\w+)/);
+      if (!m) return null;
+      return {
+        name: m[2],
+        type: simplifyCSharpType(m[1]),
+        required: !m[1].endsWith("?"),
+      };
+    })
+    .filter(Boolean) as PayloadField[];
 }
 
 function parseCSharpClassBody(body: string): PayloadField[] {
@@ -472,15 +525,29 @@ function parseCSharpClassBody(body: string): PayloadField[] {
 
 function simplifyCSharpType(type: string): string {
   const map: Record<string, string> = {
-    "string": "string", "String": "string",
-    "int": "integer", "Int32": "integer", "int?": "integer",
-    "long": "long", "Int64": "long", "long?": "long",
-    "bool": "boolean", "Boolean": "boolean", "bool?": "boolean",
-    "double": "double", "Double": "double", "double?": "double",
-    "decimal": "decimal", "Decimal": "decimal", "decimal?": "decimal",
-    "DateTime": "datetime", "DateTime?": "datetime",
-    "DateTimeOffset": "datetime", "Guid": "uuid", "Guid?": "uuid",
-    "object": "object",
+    string: "string",
+    String: "string",
+    int: "integer",
+    Int32: "integer",
+    "int?": "integer",
+    long: "long",
+    Int64: "long",
+    "long?": "long",
+    bool: "boolean",
+    Boolean: "boolean",
+    "bool?": "boolean",
+    double: "double",
+    Double: "double",
+    "double?": "double",
+    decimal: "decimal",
+    Decimal: "decimal",
+    "decimal?": "decimal",
+    DateTime: "datetime",
+    "DateTime?": "datetime",
+    DateTimeOffset: "datetime",
+    Guid: "uuid",
+    "Guid?": "uuid",
+    object: "object",
   };
 
   const clean = type.replace("?", "").trim();
@@ -526,7 +593,8 @@ function extractCSharpServiceUrlHints(fileContents: Map<string, string>): Servic
 
     if (fileName.endsWith(".cs")) {
       // _configuration["OrderServiceUrl"] or _configuration.GetValue<string>("OrderServiceUrl")
-      const configRegex = /_configuration\s*\[\s*["'](\w+(?:Url|Host|Endpoint|BaseUrl|Service)\w*)["']\s*]/g;
+      const configRegex =
+        /_configuration\s*\[\s*["'](\w+(?:Url|Host|Endpoint|BaseUrl|Service)\w*)["']\s*]/g;
       let match: RegExpExecArray | null;
       while ((match = configRegex.exec(content)) !== null) {
         const key = match[1];
@@ -537,7 +605,8 @@ function extractCSharpServiceUrlHints(fileContents: Map<string, string>): Servic
       }
 
       // Environment.GetEnvironmentVariable("ORDER_SERVICE_URL")
-      const envRegex = /Environment\.GetEnvironmentVariable\s*\(\s*["']([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|SERVICE)[A-Z0-9_]*)["']\s*\)/g;
+      const envRegex =
+        /Environment\.GetEnvironmentVariable\s*\(\s*["']([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|SERVICE)[A-Z0-9_]*)["']\s*\)/g;
       while ((match = envRegex.exec(content)) !== null) {
         const key = match[1];
         if (!seen.has(key)) {
@@ -547,7 +616,8 @@ function extractCSharpServiceUrlHints(fileContents: Map<string, string>): Servic
       }
 
       // Named HttpClient: services.AddHttpClient("order-service", c => c.BaseAddress = new Uri("http://..."))
-      const namedClientRegex = /AddHttpClient\s*\(\s*["']([^"']+)["'][^)]*(?:BaseAddress\s*=\s*new\s+Uri\s*\(\s*["']([^"']+)["'])?/g;
+      const namedClientRegex =
+        /AddHttpClient\s*\(\s*["']([^"']+)["'][^)]*(?:BaseAddress\s*=\s*new\s+Uri\s*\(\s*["']([^"']+)["'])?/g;
       while ((match = namedClientRegex.exec(content)) !== null) {
         const key = `HTTP_CLIENT_${match[1].toUpperCase().replace(/-/g, "_")}`;
         if (!seen.has(key)) {
@@ -566,7 +636,10 @@ function extractCSharpServiceUrlHints(fileContents: Map<string, string>): Servic
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Returns {start, end} line numbers (1-based) of the method body starting at signatureLine */
-function getMethodBodyLineRange(lines: string[], signatureLine: number): { start: number; end: number } {
+function getMethodBodyLineRange(
+  lines: string[],
+  signatureLine: number,
+): { start: number; end: number } {
   let depth = 0;
   let started = false;
   let startLine = signatureLine + 1;
@@ -574,10 +647,19 @@ function getMethodBodyLineRange(lines: string[], signatureLine: number): { start
 
   for (let i = signatureLine; i < lines.length; i++) {
     for (const ch of lines[i]) {
-      if (ch === "{") { depth++; started = true; if (depth === 1) startLine = i + 1; }
-      if (ch === "}") { depth--; }
+      if (ch === "{") {
+        depth++;
+        started = true;
+        if (depth === 1) startLine = i + 1;
+      }
+      if (ch === "}") {
+        depth--;
+      }
     }
-    if (started && depth === 0) { endLine = i + 1; break; }
+    if (started && depth === 0) {
+      endLine = i + 1;
+      break;
+    }
   }
 
   return { start: startLine, end: endLine };
@@ -596,7 +678,7 @@ function combinePaths(prefix: string, route: string): string {
 
 function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
   const seen = new Set<string>();
-  return calls.filter(c => {
+  return calls.filter((c) => {
     const key = `${c.method}:${c.rawUrl}:${c.line}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -606,8 +688,12 @@ function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {
   const candidates = [
-    "openapi.yaml", "openapi.yml", "openapi.json",
-    "swagger.yaml", "swagger.yml", "swagger.json",
+    "openapi.yaml",
+    "openapi.yml",
+    "openapi.json",
+    "swagger.yaml",
+    "swagger.yml",
+    "swagger.json",
     "wwwroot/swagger/v1/swagger.json",
     "docs/openapi.yaml",
   ];
@@ -618,7 +704,9 @@ async function findOpenApiSpec(projectPath: string): Promise<string | null> {
       const { access } = await import("fs/promises");
       await access(full);
       return full;
-    } catch { /* continue */ }
+    } catch {
+      /* continue */
+    }
   }
   return null;
 }

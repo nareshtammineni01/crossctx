@@ -73,9 +73,11 @@ export function diffOutputs(baseline: CrossCtxOutput, current: CrossCtxOutput): 
     summary: {
       totalBreaking: breaking.length,
       totalNonBreaking: nonBreaking.length,
-      removedEndpoints: breaking.filter(d => d.type === "removed").length,
-      addedEndpoints: nonBreaking.filter(d => d.type === "added").length,
-      changedEndpoints: breaking.filter(d => d.type === "changed").length + nonBreaking.filter(d => d.type === "changed").length,
+      removedEndpoints: breaking.filter((d) => d.type === "removed").length,
+      addedEndpoints: nonBreaking.filter((d) => d.type === "added").length,
+      changedEndpoints:
+        breaking.filter((d) => d.type === "changed").length +
+        nonBreaking.filter((d) => d.type === "changed").length,
     },
   };
 }
@@ -100,7 +102,7 @@ function buildEndpointMap(output: CrossCtxOutput): Map<string, (typeof output.en
  */
 function detectEndpointChanges(
   baseline: (typeof buildEndpointMap.prototype.get)[0],
-  current: (typeof buildEndpointMap.prototype.get)[0]
+  current: (typeof buildEndpointMap.prototype.get)[0],
 ): EndpointChanges | null {
   const changes: EndpointChanges = {};
 
@@ -120,8 +122,8 @@ function detectEndpointChanges(
     const baselineFields = new Set(Object.keys(baseline.requestBody.properties));
     const currentFields = new Set(Object.keys(current.requestBody.properties));
 
-    const removedFields = Array.from(baselineFields).filter(f => !currentFields.has(f));
-    const addedFields = Array.from(currentFields).filter(f => !baselineFields.has(f));
+    const removedFields = Array.from(baselineFields).filter((f) => !currentFields.has(f));
+    const addedFields = Array.from(currentFields).filter((f) => !baselineFields.has(f));
 
     if (removedFields.length > 0 || addedFields.length > 0) {
       changes.removedFields = removedFields;
@@ -145,7 +147,7 @@ function detectEndpointChanges(
     const baselineFields = new Set(Object.keys(baseline.response.properties));
     const currentFields = new Set(Object.keys(current.response.properties));
 
-    const removedFields = Array.from(baselineFields).filter(f => !currentFields.has(f));
+    const removedFields = Array.from(baselineFields).filter((f) => !currentFields.has(f));
 
     if (removedFields.length > 0) {
       if (!changes.removedFields) changes.removedFields = [];

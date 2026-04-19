@@ -12,7 +12,15 @@ import type {
 } from "../types/index.js";
 import { extractMessageEvents } from "./messaging.js";
 
-const IGNORE = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/*.spec.ts", "**/*.test.ts", "**/*.d.ts"];
+const IGNORE = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/.git/**",
+  "**/*.spec.ts",
+  "**/*.test.ts",
+  "**/*.d.ts",
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main entry point
@@ -21,7 +29,7 @@ const IGNORE = ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**",
 export async function parseTypeScriptProject(
   projectPath: string,
   language: DetectedLanguage,
-  serviceName: string
+  serviceName: string,
 ): Promise<CodeScanResult> {
   // 1. Discover all source files
   const sourceFiles = await fg(["**/*.ts", "**/*.js"], {
@@ -48,7 +56,13 @@ export async function parseTypeScriptProject(
   const serviceUrlHints = extractServiceUrlHints(fileContents, projectPath);
 
   // 5. Parse controllers + services
-  const endpoints = extractEndpoints(fileContents, projectPath, serviceName, dtoMap, language.framework);
+  const endpoints = extractEndpoints(
+    fileContents,
+    projectPath,
+    serviceName,
+    dtoMap,
+    language.framework,
+  );
 
   // 6. Check for OpenAPI spec
   const specFile = await findOpenApiSpec(projectPath);
@@ -78,7 +92,7 @@ function extractEndpoints(
   projectPath: string,
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
-  framework: string
+  framework: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -86,7 +100,14 @@ function extractEndpoints(
     if (!isControllerFile(filePath, content, framework)) continue;
 
     const controllerPrefix = extractControllerPrefix(content, framework);
-    const handlers = extractHandlers(content, filePath, serviceName, controllerPrefix, dtoMap, framework);
+    const handlers = extractHandlers(
+      content,
+      filePath,
+      serviceName,
+      controllerPrefix,
+      dtoMap,
+      framework,
+    );
     endpoints.push(...handlers);
   }
 
@@ -140,7 +161,7 @@ function extractHandlers(
   serviceName: string,
   controllerPrefix: string,
   dtoMap: Map<string, PayloadShape>,
-  framework: string
+  framework: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
@@ -156,7 +177,9 @@ function extractHandlers(
       const line = lines[i];
 
       for (const httpMethod of METHOD_DECORATORS) {
-        const decoratorRegex = new RegExp(`@${httpMethod}\\s*\\(\\s*(?:['"\`]([^'"\`]*?)['"\`])?\\s*\\)`);
+        const decoratorRegex = new RegExp(
+          `@${httpMethod}\\s*\\(\\s*(?:['"\`]([^'"\`]*?)['"\`])?\\s*\\)`,
+        );
         const match = line.match(decoratorRegex);
         if (!match) continue;
 
@@ -172,7 +195,10 @@ function extractHandlers(
 
         // Scope outbound calls to those found in this method's body
         const scopedCalls = allOutboundCalls.filter(
-          (c) => c.line !== undefined && c.line >= bodyStartLine && c.line <= bodyStartLine + body.split("\n").length
+          (c) =>
+            c.line !== undefined &&
+            c.line >= bodyStartLine &&
+            c.line <= bodyStartLine + body.split("\n").length,
         );
 
         endpoints.push({
@@ -195,7 +221,8 @@ function extractHandlers(
 
   if (framework === "express" || (!endpoints.length && content.includes("router."))) {
     // Express-style: router.get('/path', handler) or app.post('/path', handler)
-    const expressMethodRegex = /(?:router|app)\.(get|post|put|delete|patch|head)\s*\(\s*['"`]([^'"`]+?)['"`]/g;
+    const expressMethodRegex =
+      /(?:router|app)\.(get|post|put|delete|patch|head)\s*\(\s*['"`]([^'"`]+?)['"`]/g;
     let match: RegExpExecArray | null;
 
     while ((match = expressMethodRegex.exec(content)) !== null) {
@@ -215,7 +242,7 @@ function extractHandlers(
         sourceFile: filePath,
         line: lineNum,
         outboundCalls: allOutboundCalls.filter(
-          (c) => c.line !== undefined && c.line >= lineNum && c.line <= lineNum + 20
+          (c) => c.line !== undefined && c.line >= lineNum && c.line <= lineNum + 20,
         ),
       });
     }
@@ -226,7 +253,7 @@ function extractHandlers(
 
 function extractMethodBody(
   lines: string[],
-  startIdx: number
+  startIdx: number,
 ): { methodName: string; body: string; bodyStartLine: number } {
   // Find the method signature line (next non-decorator, non-empty line)
   let methodName = "unknown";
@@ -252,7 +279,10 @@ function extractMethodBody(
   for (let i = bodyStartLine; i < lines.length; i++) {
     const line = lines[i];
     for (const char of line) {
-      if (char === "{") { depth++; inBody = true; }
+      if (char === "{") {
+        depth++;
+        inBody = true;
+      }
       if (char === "}") depth--;
     }
     if (inBody) bodyLines.push(line);
@@ -265,7 +295,7 @@ function extractMethodBody(
 function extractRequestBodyFromSignature(
   lines: string[],
   decoratorLine: number,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   // Look for @Body() paramName: DtoType in the next few lines
   for (let i = decoratorLine; i < Math.min(decoratorLine + 10, lines.length); i++) {
@@ -294,7 +324,7 @@ function extractRequestBodyFromSignature(
 function extractResponseFromDecorators(
   lines: string[],
   decoratorLine: number,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   for (let i = decoratorLine; i < Math.min(decoratorLine + 8, lines.length); i++) {
     const line = lines[i];
@@ -368,20 +398,53 @@ function extractOutboundCalls(content: string, filePath: string): OutboundCall[]
   const calls: OutboundCall[] = [];
 
   // Patterns to detect outbound HTTP calls
-  const patterns: Array<{ regex: RegExp; pattern: string; methodGroup: number; urlGroup: number }> = [
-    // axios.get('url'), axios.post('url'), this.http.get('url')
-    { regex: /(?:axios|this\.http(?:Client)?|http)\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"]|${[^}]+\}[^,)]*)/g, pattern: "axios", methodGroup: 1, urlGroup: 2 },
-    // this.httpService.get/post (NestJS HttpService)
-    { regex: /this\.\w+(?:Service|Client|Http)?\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"|${])/g, pattern: "HttpService", methodGroup: 1, urlGroup: 2 },
-    // fetch('url', { method: 'POST' })
-    { regex: /\bfetch\s*\(\s*([`'"](.*?)[`'"]|${[^}]+\}[^,)]*)/g, pattern: "fetch", methodGroup: 0, urlGroup: 1 },
-    // new HttpClient().get / .post (Angular-style)
-    { regex: /this\.\w*[Hh]ttp\w*\.(get|post|put|delete|patch)<[^>]*>\s*\(\s*`?([^`'",$)]+)/g, pattern: "HttpClient", methodGroup: 1, urlGroup: 2 },
-    // got.get, got.post
-    { regex: /\bgot\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"])/g, pattern: "got", methodGroup: 1, urlGroup: 2 },
-    // request({ url: ..., method: ... })
-    { regex: /\brequest\s*\(\s*\{[^}]*url\s*:\s*([`'"](.*?)[`'"|${])/g, pattern: "request", methodGroup: 0, urlGroup: 1 },
-  ];
+  const patterns: Array<{ regex: RegExp; pattern: string; methodGroup: number; urlGroup: number }> =
+    [
+      // axios.get('url'), axios.post('url'), this.http.get('url')
+      {
+        regex:
+          /(?:axios|this\.http(?:Client)?|http)\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"]|${[^}]+\}[^,)]*)/g,
+        pattern: "axios",
+        methodGroup: 1,
+        urlGroup: 2,
+      },
+      // this.httpService.get/post (NestJS HttpService)
+      {
+        regex:
+          /this\.\w+(?:Service|Client|Http)?\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"|${])/g,
+        pattern: "HttpService",
+        methodGroup: 1,
+        urlGroup: 2,
+      },
+      // fetch('url', { method: 'POST' })
+      {
+        regex: /\bfetch\s*\(\s*([`'"](.*?)[`'"]|${[^}]+\}[^,)]*)/g,
+        pattern: "fetch",
+        methodGroup: 0,
+        urlGroup: 1,
+      },
+      // new HttpClient().get / .post (Angular-style)
+      {
+        regex: /this\.\w*[Hh]ttp\w*\.(get|post|put|delete|patch)<[^>]*>\s*\(\s*`?([^`'",$)]+)/g,
+        pattern: "HttpClient",
+        methodGroup: 1,
+        urlGroup: 2,
+      },
+      // got.get, got.post
+      {
+        regex: /\bgot\.(get|post|put|delete|patch)\s*\(\s*([`'"](.*?)[`'"])/g,
+        pattern: "got",
+        methodGroup: 1,
+        urlGroup: 2,
+      },
+      // request({ url: ..., method: ... })
+      {
+        regex: /\brequest\s*\(\s*\{[^}]*url\s*:\s*([`'"](.*?)[`'"|${])/g,
+        pattern: "request",
+        methodGroup: 0,
+        urlGroup: 1,
+      },
+    ];
 
   for (const { regex, pattern, methodGroup, urlGroup } of patterns) {
     let match: RegExpExecArray | null;
@@ -428,7 +491,7 @@ function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
 
 function extractDTOsFromAllFiles(
   fileContents: Map<string, string>,
-  _projectPath: string
+  _projectPath: string,
 ): Map<string, PayloadShape> {
   const dtoMap = new Map<string, PayloadShape>();
 
@@ -475,7 +538,8 @@ function extractPayloadShapes(content: string): PayloadShape[] {
   }
 
   // Extract TypeScript classes (DTOs)
-  const classRegex = /export\s+class\s+(\w+)\s*(?:extends\s+\w+\s*)?\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/g;
+  const classRegex =
+    /export\s+class\s+(\w+)\s*(?:extends\s+\w+\s*)?\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/g;
 
   while ((match = classRegex.exec(content)) !== null) {
     const typeName = match[1];
@@ -510,7 +574,8 @@ function parseInterfaceBody(body: string): PayloadField[] {
     const optional = match[2] === "?";
     const type = match[3].trim().replace(/;$/, "");
 
-    if (["constructor", "private", "public", "protected", "readonly", "static"].includes(name)) continue;
+    if (["constructor", "private", "public", "protected", "readonly", "static"].includes(name))
+      continue;
 
     fields.push({
       name,
@@ -536,7 +601,8 @@ function parseClassBody(body: string): PayloadField[] {
     const type = match[3].trim();
 
     // Skip constructor parameters and method names
-    if (["constructor", "super", "return", "private", "public", "protected"].includes(name)) continue;
+    if (["constructor", "super", "return", "private", "public", "protected"].includes(name))
+      continue;
     if (type.includes("(")) continue; // method signature
 
     fields.push({
@@ -565,7 +631,7 @@ function simplifyType(type: string): string {
 
 function extractServiceUrlHints(
   fileContents: Map<string, string>,
-  _projectPath: string
+  _projectPath: string,
 ): ServiceUrlHint[] {
   const hints: ServiceUrlHint[] = [];
   const seen = new Set<string>();
@@ -573,7 +639,8 @@ function extractServiceUrlHints(
   for (const [filePath, content] of fileContents) {
     // .env files
     if (path.basename(filePath).startsWith(".env")) {
-      const envRegex = /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)\s*=\s*(.+)$/gm;
+      const envRegex =
+        /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)\s*=\s*(.+)$/gm;
       let match: RegExpExecArray | null;
       while ((match = envRegex.exec(content)) !== null) {
         const key = match[1];
@@ -585,7 +652,8 @@ function extractServiceUrlHints(
     }
 
     // TypeScript/JS constants: const MS2_URL = 'http://...' or process.env.MS2_URL
-    const constRegex = /(?:const|let|var)\s+([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)\s*=\s*['"`]([^'"`]+)['"`]/g;
+    const constRegex =
+      /(?:const|let|var)\s+([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)\s*=\s*['"`]([^'"`]+)['"`]/g;
     let match: RegExpExecArray | null;
     while ((match = constRegex.exec(content)) !== null) {
       const key = match[1];
@@ -596,7 +664,8 @@ function extractServiceUrlHints(
     }
 
     // process.env references
-    const processEnvRegex = /process\.env\.([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)/g;
+    const processEnvRegex =
+      /process\.env\.([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)/g;
     while ((match = processEnvRegex.exec(content)) !== null) {
       const key = match[1];
       if (!seen.has(key)) {
@@ -606,7 +675,8 @@ function extractServiceUrlHints(
     }
 
     // NestJS ConfigService: configService.get('MS2_URL')
-    const configRegex = /configService\.get\s*\(\s*['"`]([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)['"`]/g;
+    const configRegex =
+      /configService\.get\s*\(\s*['"`]([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE|SERVICE)[A-Z0-9_]*)['"`]/g;
     while ((match = configRegex.exec(content)) !== null) {
       const key = match[1];
       if (!seen.has(key)) {
@@ -617,7 +687,8 @@ function extractServiceUrlHints(
 
     // HTTP client base URLs in service constructors
     // e.g. private readonly baseUrl = 'http://order-service:3000'
-    const baseUrlRegex = /baseUrl\s*(?::|=)\s*(?:process\.env\.\w+\s*\??\??\s*)?['"`](https?:\/\/[^'"`]+)['"`]/g;
+    const baseUrlRegex =
+      /baseUrl\s*(?::|=)\s*(?:process\.env\.\w+\s*\??\??\s*)?['"`](https?:\/\/[^'"`]+)['"`]/g;
     while ((match = baseUrlRegex.exec(content)) !== null) {
       const key = `BASE_URL_${path.basename(filePath, ".ts").toUpperCase()}`;
       if (!seen.has(match[1])) {

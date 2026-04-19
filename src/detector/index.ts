@@ -77,7 +77,8 @@ async function checkExpress(projectPath: string): Promise<DetectedLanguage | nul
 
   if ("express" in allDeps) {
     // Check for TypeScript
-    const isTS = "typescript" in allDeps || (await fileExists(path.join(projectPath, "tsconfig.json")));
+    const isTS =
+      "typescript" in allDeps || (await fileExists(path.join(projectPath, "tsconfig.json")));
     return {
       language: isTS ? "typescript" : "typescript", // treat JS/TS the same for parsing
       framework: "express",
@@ -242,8 +243,10 @@ async function checkPython(projectPath: string): Promise<DetectedLanguage | null
   }
 
   // Last resort: look for .py files
-  if (await fileExists(path.join(projectPath, "main.py")) ||
-      await fileExists(path.join(projectPath, "app.py"))) {
+  if (
+    (await fileExists(path.join(projectPath, "main.py"))) ||
+    (await fileExists(path.join(projectPath, "app.py")))
+  ) {
     return {
       language: "python",
       framework: "unknown",

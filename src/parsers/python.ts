@@ -33,7 +33,7 @@ const IGNORE = [
 export async function parsePythonProject(
   projectPath: string,
   language: DetectedLanguage,
-  serviceName: string
+  serviceName: string,
 ): Promise<CodeScanResult> {
   const pyFiles = await fg(["**/*.py"], {
     cwd: projectPath,
@@ -45,14 +45,22 @@ export async function parsePythonProject(
   // Also read .env and config files for URL hints
   const configFiles = await fg(
     ["**/.env", "**/.env.example", "**/config.py", "**/settings.py", "**/config/*.py"],
-    { cwd: projectPath, ignore: [...IGNORE, "**/test*"], absolute: true, onlyFiles: true, dot: true }
+    {
+      cwd: projectPath,
+      ignore: [...IGNORE, "**/test*"],
+      absolute: true,
+      onlyFiles: true,
+      dot: true,
+    },
   );
 
   const fileContents = new Map<string, string>();
   for (const file of [...pyFiles, ...configFiles]) {
     try {
       fileContents.set(file, await readFile(file, "utf-8"));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   const framework = language.framework;
@@ -104,7 +112,7 @@ export async function parsePythonProject(
 function extractFastAPIEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -116,7 +124,11 @@ function extractFastAPIEndpoints(
     if (!isFastAPIFile(content)) continue;
 
     const fileEndpoints = extractFastAPIFileEndpoints(
-      content, filePath, serviceName, dtoMap, routerPrefixes
+      content,
+      filePath,
+      serviceName,
+      dtoMap,
+      routerPrefixes,
     );
     endpoints.push(...fileEndpoints);
   }
@@ -162,7 +174,7 @@ function extractFastAPIFileEndpoints(
   filePath: string,
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
-  routerPrefixes: Map<string, string>
+  routerPrefixes: Map<string, string>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
@@ -174,11 +186,11 @@ function extractFastAPIFileEndpoints(
     // @app.get("/path") or @router.get("/path", response_model=UserResponse)
     // Also @app.get("/path", tags=["users"])
     const decoratorMatch = line.match(
-      /^\s*@(\w+)\.(get|post|put|delete|patch|head|options)\s*\(\s*["']([^"']+)["']/
+      /^\s*@(\w+)\.(get|post|put|delete|patch|head|options)\s*\(\s*["']([^"']+)["']/,
     );
     if (!decoratorMatch) continue;
 
-    const routerVar = decoratorMatch[1];   // "app" or "router" or "users_router"
+    const routerVar = decoratorMatch[1]; // "app" or "router" or "users_router"
     const httpMethod = decoratorMatch[2].toUpperCase();
     const routePath = decoratorMatch[3];
 
@@ -196,16 +208,16 @@ function extractFastAPIFileEndpoints(
     const requestBody = extractFastAPIRequestBody(params, dtoMap);
 
     // Response from response_model or return type annotation
-    const response = resolvePayload(responseModel, dtoMap) ??
-      extractReturnTypeAnnotation(lines, i + 1, dtoMap);
+    const response =
+      resolvePayload(responseModel, dtoMap) ?? extractReturnTypeAnnotation(lines, i + 1, dtoMap);
 
     // Summary from docstring or @router.get(..., summary="...")
-    const summary = extractDecoratorArg(line, "summary") ??
-      extractPythonDocstring(lines, bodyStart);
+    const summary =
+      extractDecoratorArg(line, "summary") ?? extractPythonDocstring(lines, bodyStart);
 
     // Scope outbound calls to this function body
     const scopedCalls = allOutboundCalls.filter(
-      c => c.line !== undefined && c.line > i && c.line >= bodyStart && c.line <= bodyEnd
+      (c) => c.line !== undefined && c.line > i && c.line >= bodyStart && c.line <= bodyEnd,
     );
 
     endpoints.push({
@@ -233,13 +245,15 @@ function extractDecoratorArg(line: string, argName: string): string | undefined 
   if (quotedMatch) return quotedMatch[1];
 
   // Match bare identifier (class reference): response_model=RevenueReport or response_model=List[Foo]
-  const identRegex = new RegExp(`${argName}\\s*=\\s*((?:List|Optional|Set|Dict)\\[[A-Za-z_]\\w*\\]|[A-Za-z_]\\w*)`);
+  const identRegex = new RegExp(
+    `${argName}\\s*=\\s*((?:List|Optional|Set|Dict)\\[[A-Za-z_]\\w*\\]|[A-Za-z_]\\w*)`,
+  );
   return line.match(identRegex)?.[1];
 }
 
 function extractFastAPIRequestBody(
   params: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   if (!params) return undefined;
 
@@ -266,7 +280,7 @@ function extractFastAPIRequestBody(
 function extractReturnTypeAnnotation(
   lines: string[],
   startIdx: number,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   for (let i = startIdx; i < Math.min(startIdx + 3, lines.length); i++) {
     const line = lines[i].trim();
@@ -292,7 +306,7 @@ function extractReturnTypeAnnotation(
 function extractDjangoEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -303,7 +317,11 @@ function extractDjangoEndpoints(
     if (!isDjangoViewFile(content)) continue;
 
     const fileEndpoints = extractDjangoViewEndpoints(
-      content, filePath, serviceName, dtoMap, urlPatterns
+      content,
+      filePath,
+      serviceName,
+      dtoMap,
+      urlPatterns,
     );
     endpoints.push(...fileEndpoints);
   }
@@ -363,7 +381,7 @@ function extractDjangoViewEndpoints(
   filePath: string,
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
-  urlPatterns: Map<string, string>
+  urlPatterns: Map<string, string>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
@@ -375,12 +393,14 @@ function extractDjangoViewEndpoints(
     const apiViewMatch = line.match(/^\s*@api_view\s*\(\s*\[([^\]]+)\]/);
     if (!apiViewMatch) continue;
 
-    const methods = apiViewMatch[1].match(/["'](\w+)["']/g)?.map(m => m.replace(/["']/g, "")) ?? ["GET"];
+    const methods = apiViewMatch[1].match(/["'](\w+)["']/g)?.map((m) => m.replace(/["']/g, "")) ?? [
+      "GET",
+    ];
     const { funcName, bodyStart, bodyEnd } = extractPythonFuncSignature(lines, i + 1);
     const urlPrefix = urlPatterns.get(funcName) ?? `/${funcName.replace(/_/g, "-")}`;
     const summary = extractPythonDocstring(lines, bodyStart);
     const scopedCalls = allOutboundCalls.filter(
-      c => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd
+      (c) => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd,
     );
 
     for (const method of methods) {
@@ -400,9 +420,17 @@ function extractDjangoViewEndpoints(
 
   // Class-based ViewSets: list, create, retrieve, update, destroy methods
   const VIEWSET_METHOD_MAP: Record<string, string> = {
-    list: "GET", create: "POST", retrieve: "GET",
-    update: "PUT", partial_update: "PATCH", destroy: "DELETE",
-    get: "GET", post: "POST", put: "PUT", delete: "DELETE", patch: "PATCH",
+    list: "GET",
+    create: "POST",
+    retrieve: "GET",
+    update: "PUT",
+    partial_update: "PATCH",
+    destroy: "DELETE",
+    get: "GET",
+    post: "POST",
+    put: "PUT",
+    delete: "DELETE",
+    patch: "PATCH",
   };
 
   let currentClass = "";
@@ -417,16 +445,23 @@ function extractDjangoViewEndpoints(
     if (classMatch) {
       currentClass = classMatch[2];
       classIndent = classMatch[1].length;
-      currentClassPrefix = urlPatterns.get(currentClass) ?? `/${currentClass.replace(/ViewSet|View|APIView/, "").toLowerCase()}`;
+      currentClassPrefix =
+        urlPatterns.get(currentClass) ??
+        `/${currentClass.replace(/ViewSet|View|APIView/, "").toLowerCase()}`;
       continue;
     }
 
     if (!currentClass) continue;
 
     // Method inside class
-    const methodMatch = line.match(/^(\s+)def\s+(list|create|retrieve|update|partial_update|destroy|get|post|put|delete|patch)\s*\(self/);
+    const methodMatch = line.match(
+      /^(\s+)def\s+(list|create|retrieve|update|partial_update|destroy|get|post|put|delete|patch)\s*\(self/,
+    );
     if (!methodMatch) continue;
-    if (methodMatch[1].length <= classIndent) { currentClass = ""; continue; }
+    if (methodMatch[1].length <= classIndent) {
+      currentClass = "";
+      continue;
+    }
 
     const methodName = methodMatch[2];
     const httpMethod = VIEWSET_METHOD_MAP[methodName] ?? "GET";
@@ -442,7 +477,7 @@ function extractDjangoViewEndpoints(
     const response = extractDjangoSerializerResponse(lines, bodyStart, bodyEnd, dtoMap);
     const summary = extractPythonDocstring(lines, bodyStart);
     const scopedCalls = allOutboundCalls.filter(
-      c => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd
+      (c) => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd,
     );
 
     endpoints.push({
@@ -465,7 +500,10 @@ function extractDjangoViewEndpoints(
 }
 
 function extractDjangoSerializerBody(
-  lines: string[], start: number, end: number, dtoMap: Map<string, PayloadShape>
+  lines: string[],
+  start: number,
+  end: number,
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   for (let i = start; i <= Math.min(end, lines.length - 1); i++) {
     // serializer = UserSerializer(data=request.data)
@@ -476,7 +514,10 @@ function extractDjangoSerializerBody(
 }
 
 function extractDjangoSerializerResponse(
-  lines: string[], start: number, end: number, dtoMap: Map<string, PayloadShape>
+  lines: string[],
+  start: number,
+  end: number,
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   for (let i = start; i <= Math.min(end, lines.length - 1); i++) {
     // serializer = UserSerializer(instance) or return Response(UserSerializer(user).data)
@@ -493,7 +534,7 @@ function extractDjangoSerializerResponse(
 function extractFlaskEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  _dtoMap: Map<string, PayloadShape>
+  _dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -509,20 +550,20 @@ function extractFlaskEndpoints(
       // @app.route('/path', methods=['GET', 'POST'])
       // @bp.route('/path')
       const routeMatch = line.match(
-        /^\s*@(\w+)\.route\s*\(\s*["']([^"']+)["'](?:[^)]*methods\s*=\s*\[([^\]]+)\])?/
+        /^\s*@(\w+)\.route\s*\(\s*["']([^"']+)["'](?:[^)]*methods\s*=\s*\[([^\]]+)\])?/,
       );
       if (!routeMatch) continue;
 
       const routePath = routeMatch[2];
       const methodsRaw = routeMatch[3];
       const methods = methodsRaw
-        ? (methodsRaw.match(/["'](\w+)["']/g)?.map(m => m.replace(/["']/g, "")) ?? ["GET"])
+        ? (methodsRaw.match(/["'](\w+)["']/g)?.map((m) => m.replace(/["']/g, "")) ?? ["GET"])
         : ["GET"];
 
       const { funcName, bodyStart, bodyEnd } = extractPythonFuncSignature(lines, i + 1);
       const summary = extractPythonDocstring(lines, bodyStart);
       const scopedCalls = allOutboundCalls.filter(
-        c => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd
+        (c) => c.line !== undefined && c.line >= bodyStart && c.line <= bodyEnd,
       );
 
       for (const method of methods) {
@@ -567,23 +608,71 @@ function extractPythonOutboundCalls(content: string, filePath: string): Outbound
     urlGroup: number;
   }> = [
     // httpx.get("url") / httpx.post("url") / await client.get("url")
-    { regex: /(?:httpx|client|async_client)\.(get|post|put|delete|patch|request)\s*\(\s*(?:url\s*=\s*)?f?["'`]([^"'`\n]+)["'`]/g, pattern: "httpx", methodGroup: 1, urlGroup: 2 },
+    {
+      regex:
+        /(?:httpx|client|async_client)\.(get|post|put|delete|patch|request)\s*\(\s*(?:url\s*=\s*)?f?["'`]([^"'`\n]+)["'`]/g,
+      pattern: "httpx",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // httpx.get(url) where url is a variable — f-string version
-    { regex: /(?:httpx|client)\.(get|post|put|delete|patch)\s*\(\s*(f["']([^"']+)["'])/g, pattern: "httpx-fstring", methodGroup: 1, urlGroup: 2 },
+    {
+      regex: /(?:httpx|client)\.(get|post|put|delete|patch)\s*\(\s*(f["']([^"']+)["'])/g,
+      pattern: "httpx-fstring",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // await self._client.get(f"{self.base_url}/orders")
-    { regex: /self\._?(?:\w+_)?client\.(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["']/g, pattern: "httpx-self", methodGroup: 1, urlGroup: 2 },
+    {
+      regex: /self\._?(?:\w+_)?client\.(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["']/g,
+      pattern: "httpx-self",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // requests.get("url") / requests.post("url")
-    { regex: /requests\.(get|post|put|delete|patch|request)\s*\(\s*(?:url\s*=\s*)?f?["']([^"'`\n]+)["'`]/g, pattern: "requests", methodGroup: 1, urlGroup: 2 },
+    {
+      regex:
+        /requests\.(get|post|put|delete|patch|request)\s*\(\s*(?:url\s*=\s*)?f?["']([^"'`\n]+)["'`]/g,
+      pattern: "requests",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // requests.get(BASE_URL + "/path") or requests.post(self.base_url + "/path")
-    { regex: /requests\.(get|post|put|delete|patch)\s*\(\s*([\w.]+\s*\+\s*["'][^"'\n]+["'])/g, pattern: "requests-concat", methodGroup: 1, urlGroup: 2 },
+    {
+      regex: /requests\.(get|post|put|delete|patch)\s*\(\s*([\w.]+\s*\+\s*["'][^"'\n]+["'])/g,
+      pattern: "requests-concat",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // aiohttp: session.get("url") / await session.post("url")
-    { regex: /(?:session|aiohttp_session)\.(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["'`]/g, pattern: "aiohttp", methodGroup: 1, urlGroup: 2 },
+    {
+      regex:
+        /(?:session|aiohttp_session)\.(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["'`]/g,
+      pattern: "aiohttp",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // httpx.AsyncClient().get / ClientSession
-    { regex: /AsyncClient\s*\(\s*\)\s*\.\s*(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["'`]/g, pattern: "httpx-async", methodGroup: 1, urlGroup: 2 },
+    {
+      regex:
+        /AsyncClient\s*\(\s*\)\s*\.\s*(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["'`]/g,
+      pattern: "httpx-async",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
     // urllib.request.urlopen("url")
-    { regex: /urllib\.request\.urlopen\s*\(\s*["']([^"'\n]+)["']/g, pattern: "urllib", urlGroup: 1 },
+    {
+      regex: /urllib\.request\.urlopen\s*\(\s*["']([^"'\n]+)["']/g,
+      pattern: "urllib",
+      urlGroup: 1,
+    },
     // f-string with base URL variable: f"{ORDER_SERVICE_URL}/api/orders"
-    { regex: /f["']\{([A-Z_a-z]\w*(?:URL|HOST|BASE_URL|ENDPOINT|SERVICE_URL)\w*)\}([/][^"'\n]+)["']/g, pattern: "fstring-env", urlGroup: 1 },
+    {
+      regex:
+        /f["']\{([A-Z_a-z]\w*(?:URL|HOST|BASE_URL|ENDPOINT|SERVICE_URL)\w*)\}([/][^"'\n]+)["']/g,
+      pattern: "fstring-env",
+      urlGroup: 1,
+    },
   ];
 
   for (const { regex, pattern, methodGroup, urlGroup } of patterns) {
@@ -629,7 +718,7 @@ function extractPythonOutboundCalls(content: string, filePath: string): Outbound
 
 function extractPythonDTOs(
   fileContents: Map<string, string>,
-  framework: SupportedFramework
+  framework: SupportedFramework,
 ): Map<string, PayloadShape> {
   const dtoMap = new Map<string, PayloadShape>();
 
@@ -649,9 +738,10 @@ function extractPythonDTOs(
   return dtoMap;
 }
 
-
-
-function extractPythonPayloadShapes(content: string, _framework: SupportedFramework): PayloadShape[] {
+function extractPythonPayloadShapes(
+  content: string,
+  _framework: SupportedFramework,
+): PayloadShape[] {
   const shapes: PayloadShape[] = [];
 
   // Pydantic BaseModel (FastAPI) or dataclasses
@@ -659,7 +749,8 @@ function extractPythonPayloadShapes(content: string, _framework: SupportedFramew
   //     user_id: str
   //     items: List[str]
   //     total: float
-  const classRegex = /^class\s+(\w+)\s*\(\s*(?:BaseModel|BaseSettings|pydantic\.BaseModel|Schema)\s*\)\s*:/gm;
+  const classRegex =
+    /^class\s+(\w+)\s*\(\s*(?:BaseModel|BaseSettings|pydantic\.BaseModel|Schema)\s*\)\s*:/gm;
   let match: RegExpExecArray | null;
 
   while ((match = classRegex.exec(content)) !== null) {
@@ -740,7 +831,8 @@ function parsePydanticClassBody(body: string): PayloadField[] {
     // Skip method defs
     if (typeRaw.includes("(")) continue;
 
-    const isOptional = typeRaw.startsWith("Optional") || typeRaw.endsWith("| None") || typeRaw.includes("None");
+    const isOptional =
+      typeRaw.startsWith("Optional") || typeRaw.endsWith("| None") || typeRaw.includes("None");
     const type = simplifyPythonType(typeRaw);
 
     fields.push({ name, type, required: !isOptional });
@@ -768,7 +860,8 @@ function parseDjangoSerializerBody(body: string): PayloadField[] {
   // Also fields = ['id', 'name', ...] from Meta class
   const metaFieldsMatch = body.match(/fields\s*=\s*\[([^\]]+)\]/);
   if (metaFieldsMatch && fields.length === 0) {
-    const fieldNames = metaFieldsMatch[1].match(/["'](\w+)["']/g)?.map(f => f.replace(/["']/g, "")) ?? [];
+    const fieldNames =
+      metaFieldsMatch[1].match(/["'](\w+)["']/g)?.map((f) => f.replace(/["']/g, "")) ?? [];
     for (const name of fieldNames) {
       if (name !== "__all__") fields.push({ name, type: "any", required: false });
     }
@@ -779,8 +872,14 @@ function parseDjangoSerializerBody(body: string): PayloadField[] {
 
 function simplifyPythonType(type: string): string {
   const map: Record<string, string> = {
-    str: "string", int: "integer", float: "float", bool: "boolean",
-    bytes: "bytes", Any: "any", dict: "object", None: "null",
+    str: "string",
+    int: "integer",
+    float: "float",
+    bool: "boolean",
+    bytes: "bytes",
+    Any: "any",
+    dict: "object",
+    None: "null",
   };
 
   // Optional[str] → string, List[str] → string[], dict[str, Any] → object
@@ -795,7 +894,10 @@ function simplifyPythonType(type: string): string {
 
   // str | None (Python 3.10+ style)
   if (type.includes(" | ")) {
-    const parts = type.split("|").map(p => p.trim()).filter(p => p !== "None");
+    const parts = type
+      .split("|")
+      .map((p) => p.trim())
+      .filter((p) => p !== "None");
     return simplifyPythonType(parts[0]);
   }
 
@@ -823,7 +925,8 @@ function extractPythonServiceUrlHints(fileContents: Map<string, string>): Servic
     const fileName = path.basename(filePath);
     if (!fileName.startsWith(".env")) continue;
 
-    const envRegex = /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE_URL)[A-Z0-9_]*)\s*=\s*(.+)$/gm;
+    const envRegex =
+      /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE_URL)[A-Z0-9_]*)\s*=\s*(.+)$/gm;
     let match: RegExpExecArray | null;
     while ((match = envRegex.exec(content)) !== null) {
       const key = match[1];
@@ -842,7 +945,8 @@ function extractPythonServiceUrlHints(fileContents: Map<string, string>): Servic
     let match: RegExpExecArray | null;
 
     // ORDER_SERVICE_URL = "http://order-service:8082"  (UPPER_CASE constants)
-    const constRegex = /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)\s*=\s*(?:os\.(?:getenv|environ\.get)\s*\(\s*)?["']([^"'\n]+)["']/gm;
+    const constRegex =
+      /^([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)\s*=\s*(?:os\.(?:getenv|environ\.get)\s*\(\s*)?["']([^"'\n]+)["']/gm;
     while ((match = constRegex.exec(content)) !== null) {
       const key = match[1];
       if (!seen.has(key)) {
@@ -852,7 +956,8 @@ function extractPythonServiceUrlHints(fileContents: Map<string, string>): Servic
     }
 
     // os.getenv("ORDER_SERVICE_URL") / os.environ.get("ORDER_SERVICE_URL") — key-only reference
-    const osEnvRegex = /os\.(?:getenv|environ\.get)\s*\(\s*["']([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)["']/g;
+    const osEnvRegex =
+      /os\.(?:getenv|environ\.get)\s*\(\s*["']([A-Z][A-Z0-9_]*(?:URL|HOST|ENDPOINT|BASE_URL|SERVICE)[A-Z0-9_]*)["']/g;
     while ((match = osEnvRegex.exec(content)) !== null) {
       const key = match[1];
       if (!seen.has(key)) {
@@ -863,7 +968,8 @@ function extractPythonServiceUrlHints(fileContents: Map<string, string>): Servic
 
     // settings.py style: lower_case url assignments
     // order_service_url = os.getenv("ORDER_SERVICE_URL", "http://order-service:8082")
-    const settingsRegex = /^(\w*(?:url|host|endpoint|base_url|service_url)\w*)\s*=\s*(?:os\.(?:getenv|environ\.get)\s*\(\s*["'][^"']+["']\s*,\s*)?["']([^"'\n]+)["']/gim;
+    const settingsRegex =
+      /^(\w*(?:url|host|endpoint|base_url|service_url)\w*)\s*=\s*(?:os\.(?:getenv|environ\.get)\s*\(\s*["'][^"']+["']\s*,\s*)?["']([^"'\n]+)["']/gim;
     while ((match = settingsRegex.exec(content)) !== null) {
       const key = match[1].toUpperCase();
       if (!seen.has(key) && match[2].startsWith("http")) {
@@ -882,7 +988,7 @@ function extractPythonServiceUrlHints(fileContents: Map<string, string>): Servic
 
 function extractPythonFuncSignature(
   lines: string[],
-  startIdx: number
+  startIdx: number,
 ): { funcName: string; params: string; bodyStart: number; bodyEnd: number } {
   let funcName = "unknown";
   let params = "";
@@ -902,7 +1008,10 @@ function extractPythonFuncSignature(
       bodyEnd = bodyStart;
       for (let j = bodyStart; j < lines.length; j++) {
         const bodyLine = lines[j];
-        if (bodyLine.trim() === "") { bodyEnd = j; continue; }
+        if (bodyLine.trim() === "") {
+          bodyEnd = j;
+          continue;
+        }
         const lineIndent = bodyLine.match(/^(\s*)/)?.[1].length ?? 0;
         if (lineIndent <= funcIndent && bodyLine.trim() !== "") break;
         bodyEnd = j;
@@ -936,7 +1045,7 @@ function extractPythonDocstring(lines: string[], bodyStart: number): string | un
 
 function resolvePayload(
   typeName: string | undefined,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): PayloadShape | undefined {
   if (!typeName) return undefined;
   const clean = unwrapPythonGeneric(typeName);
@@ -947,7 +1056,7 @@ function resolvePayload(
 
 function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
   const seen = new Set<string>();
-  return calls.filter(c => {
+  return calls.filter((c) => {
     const key = `${c.method}:${c.rawUrl}:${c.line}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -963,9 +1072,13 @@ function combinePaths(prefix: string, route: string): string {
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {
   const candidates = [
-    "openapi.yaml", "openapi.yml", "openapi.json",
-    "swagger.yaml", "swagger.yml",
-    "docs/openapi.yaml", "api/openapi.yaml",
+    "openapi.yaml",
+    "openapi.yml",
+    "openapi.json",
+    "swagger.yaml",
+    "swagger.yml",
+    "docs/openapi.yaml",
+    "api/openapi.yaml",
     "app/openapi.yaml",
   ];
   for (const c of candidates) {
@@ -973,7 +1086,9 @@ async function findOpenApiSpec(projectPath: string): Promise<string | null> {
       const { access } = await import("fs/promises");
       await access(path.join(projectPath, c));
       return path.join(projectPath, c);
-    } catch { /* continue */ }
+    } catch {
+      /* continue */
+    }
   }
   return null;
 }

@@ -11,13 +11,7 @@ import type {
   DetectedLanguage,
 } from "../types/index.js";
 
-const IGNORE = [
-  "**/vendor/**",
-  "**/.git/**",
-  "**/*_test.go",
-  "**/testdata/**",
-  "**/*.pb.go",
-];
+const IGNORE = ["**/vendor/**", "**/.git/**", "**/*_test.go", "**/testdata/**", "**/*.pb.go"];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main entry point
@@ -26,7 +20,7 @@ const IGNORE = [
 export async function parseGoProject(
   projectPath: string,
   language: DetectedLanguage,
-  serviceName: string
+  serviceName: string,
 ): Promise<CodeScanResult> {
   const goFiles = await fg(["**/*.go"], {
     cwd: projectPath,
@@ -40,7 +34,9 @@ export async function parseGoProject(
   for (const file of goFiles) {
     try {
       fileContents.set(file, await readFile(file, "utf-8"));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Extract DTOs/structs first
@@ -74,7 +70,7 @@ export async function parseGoProject(
 function extractGoEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -93,7 +89,7 @@ function extractGoEndpoints(
       serviceName,
       dtoMap,
       routerGroupMap,
-      allContent
+      allContent,
     );
     endpoints.push(...fileEndpoints);
   }
@@ -145,9 +141,7 @@ function buildRouterGroupMap(fileContents: Map<string, string>): Map<string, Rou
       const localPrefix = match[3];
       // Resolve transitive prefix: if parentVar already has a prefix, prepend it
       const parentInfo = groupMap.get(parentVar);
-      const fullPrefix = parentInfo
-        ? combinePaths(parentInfo.prefix, localPrefix)
-        : localPrefix;
+      const fullPrefix = parentInfo ? combinePaths(parentInfo.prefix, localPrefix) : localPrefix;
       groupMap.set(newVar, { variable: newVar, prefix: fullPrefix, filePath });
     }
   }
@@ -161,32 +155,53 @@ function extractEndpointsFromFile(
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
   routerGroupMap: Map<string, RouterGroupInfo>,
-  allContent: string
+  allContent: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const allOutboundCalls = extractGoOutboundCalls(content, filePath);
 
   // Pattern 1: Gin routes (r.GET, r.POST, etc.)
   const ginEndpoints = extractGinEndpoints(
-    content, filePath, serviceName, dtoMap, routerGroupMap, allOutboundCalls, allContent
+    content,
+    filePath,
+    serviceName,
+    dtoMap,
+    routerGroupMap,
+    allOutboundCalls,
+    allContent,
   );
   endpoints.push(...ginEndpoints);
 
   // Pattern 2: Chi routes (r.Get, r.Post, etc.)
   const chiEndpoints = extractChiEndpoints(
-    content, filePath, serviceName, dtoMap, allOutboundCalls, allContent
+    content,
+    filePath,
+    serviceName,
+    dtoMap,
+    allOutboundCalls,
+    allContent,
   );
   endpoints.push(...chiEndpoints);
 
   // Pattern 3: Gorilla Mux routes (r.HandleFunc)
   const muxEndpoints = extractMuxEndpoints(
-    content, filePath, serviceName, dtoMap, allOutboundCalls, allContent
+    content,
+    filePath,
+    serviceName,
+    dtoMap,
+    allOutboundCalls,
+    allContent,
   );
   endpoints.push(...muxEndpoints);
 
   // Pattern 4: stdlib http.HandleFunc
   const stdlibEndpoints = extractStdlibEndpoints(
-    content, filePath, serviceName, dtoMap, allOutboundCalls, allContent
+    content,
+    filePath,
+    serviceName,
+    dtoMap,
+    allOutboundCalls,
+    allContent,
   );
   endpoints.push(...stdlibEndpoints);
 
@@ -200,11 +215,12 @@ function extractGinEndpoints(
   dtoMap: Map<string, PayloadShape>,
   routerGroupMap: Map<string, RouterGroupInfo>,
   allOutboundCalls: OutboundCall[],
-  allContent: string
+  allContent: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   // Match: routerVar.GET("/path", handler) or routerVar.GET("", ctrl.Method) (empty path allowed)
-  const ginRouteRegex = /(\w+)\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\s*\(\s*["']([^"']*)["']\s*,\s*([\w.]+)\s*\)/gi;
+  const ginRouteRegex =
+    /(\w+)\.(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\s*\(\s*["']([^"']*)["']\s*,\s*([\w.]+)\s*\)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = ginRouteRegex.exec(content)) !== null) {
@@ -226,7 +242,7 @@ function extractGinEndpoints(
     const { requestBody, response } = extractRequestResponseFromHandler(
       allContent,
       handlerName,
-      dtoMap
+      dtoMap,
     );
 
     // Scope outbound calls to this handler
@@ -237,7 +253,7 @@ function extractGinEndpoints(
         c.line !== undefined &&
         handlerBodyRange &&
         c.line >= handlerBodyRange.start &&
-        c.line <= handlerBodyRange.end
+        c.line <= handlerBodyRange.end,
     );
 
     endpoints.push({
@@ -265,14 +281,15 @@ function extractChiEndpoints(
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
   allOutboundCalls: OutboundCall[],
-  allContent: string
+  allContent: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const allLines = allContent.split("\n");
 
   // Match patterns like: r.Get("/path", handler) or r.Post("/path", handler)
   // Chi uses lowercase method names: Get, Post, Put, Delete, Patch
-  const chiRouteRegex = /r\.(Get|Post|Put|Delete|Patch|Options|Head)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/gi;
+  const chiRouteRegex =
+    /r\.(Get|Post|Put|Delete|Patch|Options|Head)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/gi;
 
   let match: RegExpExecArray | null;
   while ((match = chiRouteRegex.exec(content)) !== null) {
@@ -286,7 +303,7 @@ function extractChiEndpoints(
     const { requestBody, response } = extractRequestResponseFromHandler(
       allContent,
       handlerName,
-      dtoMap
+      dtoMap,
     );
 
     const handlerBodyRange = findHandlerBodyRange(allLines, handlerName);
@@ -295,7 +312,7 @@ function extractChiEndpoints(
         c.line !== undefined &&
         handlerBodyRange &&
         c.line >= handlerBodyRange.start &&
-        c.line <= handlerBodyRange.end
+        c.line <= handlerBodyRange.end,
     );
 
     endpoints.push({
@@ -315,7 +332,8 @@ function extractChiEndpoints(
   }
 
   // Also handle Chi Route groups: r.Route("/api", func(r chi.Router) { ... })
-  const chiRouteGroupRegex = /r\.Route\s*\(\s*["']([^"']+)["']\s*,\s*func\s*\(\s*r\s+chi\.Router\s*\)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/gs;
+  const chiRouteGroupRegex =
+    /r\.Route\s*\(\s*["']([^"']+)["']\s*,\s*func\s*\(\s*r\s+chi\.Router\s*\)\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/gs;
   let groupMatch: RegExpExecArray | null;
 
   while ((groupMatch = chiRouteGroupRegex.exec(content)) !== null) {
@@ -323,7 +341,8 @@ function extractChiEndpoints(
     const groupBody = groupMatch[2];
 
     // Extract routes within the group
-    const groupRouteRegex = /r\.(Get|Post|Put|Delete|Patch|Options|Head)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/gi;
+    const groupRouteRegex =
+      /r\.(Get|Post|Put|Delete|Patch|Options|Head)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/gi;
     let innerMatch: RegExpExecArray | null;
 
     while ((innerMatch = groupRouteRegex.exec(groupBody)) !== null) {
@@ -337,7 +356,7 @@ function extractChiEndpoints(
       const { requestBody, response } = extractRequestResponseFromHandler(
         allContent,
         handlerName,
-        dtoMap
+        dtoMap,
       );
 
       const handlerBodyRange = findHandlerBodyRange(allLines, handlerName);
@@ -346,7 +365,7 @@ function extractChiEndpoints(
           c.line !== undefined &&
           handlerBodyRange &&
           c.line >= handlerBodyRange.start &&
-          c.line <= handlerBodyRange.end
+          c.line <= handlerBodyRange.end,
       );
 
       endpoints.push({
@@ -375,14 +394,15 @@ function extractMuxEndpoints(
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
   allOutboundCalls: OutboundCall[],
-  allContent: string
+  allContent: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const allLines = allContent.split("\n");
 
   // Gorilla Mux pattern: r.HandleFunc("/path", handler).Methods("GET", "POST")
   // Also: router.Path("/path").HandlerFunc(handler).Methods("GET")
-  const muxRegex = /(?:r|router)\.(?:HandleFunc|Path)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)(?:\.Methods\s*\(\s*([^)]+)\s*\))?/gi;
+  const muxRegex =
+    /(?:r|router)\.(?:HandleFunc|Path)\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)(?:\.Methods\s*\(\s*([^)]+)\s*\))?/gi;
 
   let match: RegExpExecArray | null;
   while ((match = muxRegex.exec(content)) !== null) {
@@ -402,7 +422,7 @@ function extractMuxEndpoints(
       const { requestBody, response } = extractRequestResponseFromHandler(
         allContent,
         handlerName,
-        dtoMap
+        dtoMap,
       );
 
       const handlerBodyRange = findHandlerBodyRange(allLines, handlerName);
@@ -411,7 +431,7 @@ function extractMuxEndpoints(
           c.line !== undefined &&
           handlerBodyRange &&
           c.line >= handlerBodyRange.start &&
-          c.line <= handlerBodyRange.end
+          c.line <= handlerBodyRange.end,
       );
 
       endpoints.push({
@@ -440,7 +460,7 @@ function extractStdlibEndpoints(
   serviceName: string,
   dtoMap: Map<string, PayloadShape>,
   allOutboundCalls: OutboundCall[],
-  allContent: string
+  allContent: string,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const allLines = allContent.split("\n");
@@ -461,7 +481,7 @@ function extractStdlibEndpoints(
     const { requestBody, response } = extractRequestResponseFromHandler(
       allContent,
       handlerName,
-      dtoMap
+      dtoMap,
     );
 
     const handlerBodyRange = findHandlerBodyRange(allLines, handlerName);
@@ -470,7 +490,7 @@ function extractStdlibEndpoints(
         c.line !== undefined &&
         handlerBodyRange &&
         c.line >= handlerBodyRange.start &&
-        c.line <= handlerBodyRange.end
+        c.line <= handlerBodyRange.end,
     );
 
     endpoints.push({
@@ -501,7 +521,7 @@ function extractStdlibEndpoints(
 function extractRequestResponseFromHandler(
   content: string,
   handlerName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): { requestBody?: PayloadShape; response?: PayloadShape } {
   let requestBody: PayloadShape | undefined;
   let response: PayloadShape | undefined;
@@ -509,7 +529,7 @@ function extractRequestResponseFromHandler(
   // Find the handler function definition and body
   const handlerRegex = new RegExp(
     `func\\s+(?:\\(\\s*\\w+\\s+\\*?\\w+\\s*\\))?\\s*${handlerName}\\s*\\([^)]*\\)\\s*(?:\\([^)]*\\))?\\s*\\{([^}]+(?:\\{[^}]*\\}[^}]*)*?)\\}`,
-    "s"
+    "s",
   );
 
   const handlerMatch = handlerRegex.exec(content);
@@ -652,7 +672,7 @@ function findVariableType(body: string, varName: string): string | null {
  */
 function findHandlerBodyRange(
   lines: string[],
-  handlerName: string
+  handlerName: string,
 ): { start: number; end: number } | null {
   let funcStart = -1;
 
@@ -699,36 +719,39 @@ function findHandlerBodyRange(
 function extractGoOutboundCalls(content: string, filePath: string): OutboundCall[] {
   const calls: OutboundCall[] = [];
 
-  const patterns: Array<{ regex: RegExp; pattern: string; methodIndex: number; urlIndex: number }> = [
-    // http.Get("url"), http.Post("url", ...), etc.
-    {
-      regex: /http\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*["']([^"']+)["']/gi,
-      pattern: "http",
-      methodIndex: 1,
-      urlIndex: 2,
-    },
-    // client.Get("url"), client.Post("url", ...), etc.
-    {
-      regex: /client\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*(?:context\.Context.*?,\s*)?["']([^"']+)["']/gi,
-      pattern: "http.Client",
-      methodIndex: 1,
-      urlIndex: 2,
-    },
-    // http.NewRequest("GET", "url", ...)
-    {
-      regex: /http\.NewRequest\s*\(\s*["']([A-Z]+)["']\s*,\s*["']([^"']+)["']/gi,
-      pattern: "http.Request",
-      methodIndex: 1,
-      urlIndex: 2,
-    },
-    // Variable concatenation: serviceURL + "/api/orders"
-    {
-      regex: /(?:http|client)\.(Get|Post|Put|Delete)\s*\(\s*([A-Za-z_]\w*\s*\+\s*["'][^"']+["'])/gi,
-      pattern: "http",
-      methodIndex: 1,
-      urlIndex: 2,
-    },
-  ];
+  const patterns: Array<{ regex: RegExp; pattern: string; methodIndex: number; urlIndex: number }> =
+    [
+      // http.Get("url"), http.Post("url", ...), etc.
+      {
+        regex: /http\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*["']([^"']+)["']/gi,
+        pattern: "http",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+      // client.Get("url"), client.Post("url", ...), etc.
+      {
+        regex:
+          /client\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*(?:context\.Context.*?,\s*)?["']([^"']+)["']/gi,
+        pattern: "http.Client",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+      // http.NewRequest("GET", "url", ...)
+      {
+        regex: /http\.NewRequest\s*\(\s*["']([A-Z]+)["']\s*,\s*["']([^"']+)["']/gi,
+        pattern: "http.Request",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+      // Variable concatenation: serviceURL + "/api/orders"
+      {
+        regex:
+          /(?:http|client)\.(Get|Post|Put|Delete)\s*\(\s*([A-Za-z_]\w*\s*\+\s*["'][^"']+["'])/gi,
+        pattern: "http",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+    ];
 
   for (const { regex, pattern, methodIndex, urlIndex } of patterns) {
     let match: RegExpExecArray | null;
@@ -780,9 +803,7 @@ function isStructFile(filePath: string, content: string): boolean {
 
   return (
     content.includes("type ") &&
-    (content.includes("struct {") ||
-      content.includes("Request") ||
-      content.includes("Response"))
+    (content.includes("struct {") || content.includes("Request") || content.includes("Response"))
   );
 }
 
@@ -838,12 +859,12 @@ function parseGoStructBody(body: string): PayloadField[] {
 
 function simplifyGoType(goType: string): string {
   const map: Record<string, string> = {
-    "string": "string",
-    "int": "integer",
-    "int32": "integer",
-    "int64": "long",
-    "float64": "double",
-    "bool": "boolean",
+    string: "string",
+    int: "integer",
+    int32: "integer",
+    int64: "long",
+    float64: "double",
+    bool: "boolean",
     "time.Time": "datetime",
   };
 
@@ -956,7 +977,9 @@ async function findOpenApiSpec(projectPath: string): Promise<string | null> {
       const { access } = await import("fs/promises");
       await access(full);
       return full;
-    } catch { /* continue */ }
+    } catch {
+      /* continue */
+    }
   }
   return null;
 }

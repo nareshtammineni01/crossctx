@@ -18,7 +18,11 @@ export function renderGraph(output: CrossCtxOutput): string {
   // Build controller groupings for sidebar + single-service graph view
   const controllerGroups = buildControllerGroups(endpointsData);
 
-  const dataJson = JSON.stringify({ services, graphEdges, endpointsData, callChains, controllerGroups }, null, 0);
+  const dataJson = JSON.stringify(
+    { services, graphEdges, endpointsData, callChains, controllerGroups },
+    null,
+    0,
+  );
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1451,7 +1455,9 @@ document.getElementById('ctx-copy-btn').addEventListener('click', () => {
 function deriveControllerName(sourceFile: string | undefined): string {
   if (!sourceFile) return "Other";
   // Match ClassName.java / ClassName.ts / ClassName.cs / ClassName.py
-  const m = sourceFile.match(/([A-Za-z0-9_]+)(?:Controller|Router|Views?|Resource)[\w]*\.(java|ts|cs|py|kt)$/i);
+  const m = sourceFile.match(
+    /([A-Za-z0-9_]+)(?:Controller|Router|Views?|Resource)[\w]*\.(java|ts|cs|py|kt)$/i,
+  );
   if (m) return m[1] + "Controller";
   // Fallback: just use the filename without extension
   const base = sourceFile.replace(/\\/g, "/").split("/").pop() ?? "Other";
@@ -1467,7 +1473,7 @@ function buildControllerGroups(endpointsData: ReturnType<typeof buildEndpointsDa
     if (!result[svc]) result[svc] = [];
 
     const ctrlName = (ep as { controller?: string }).controller || "Other";
-    let ctrl = result[svc].find(c => c.name === ctrlName);
+    let ctrl = result[svc].find((c) => c.name === ctrlName);
     if (!ctrl) {
       ctrl = { name: ctrlName, endpoints: [] };
       result[svc].push(ctrl);
@@ -1502,7 +1508,11 @@ function buildServiceNodes(scanResults: CodeScanResult[], output: CrossCtxOutput
   }));
 }
 
-function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[], output: CrossCtxOutput) {
+function buildGraphEdges(
+  callChains: CallChain[],
+  scanResults: CodeScanResult[],
+  output: CrossCtxOutput,
+) {
   const seen = new Set<string>();
   const edges: Array<{
     fromService: string;
@@ -1526,7 +1536,9 @@ function buildGraphEdges(callChains: CallChain[], scanResults: CodeScanResult[],
           fromEndpoint: edge.from.split(":")[1] ?? "",
           confidence: edge.confidence,
           rawUrl: edge.rawUrl,
-          callPattern: (edge as unknown as Record<string, unknown>)["callPattern"] as string | undefined,
+          callPattern: (edge as unknown as Record<string, unknown>)["callPattern"] as
+            | string
+            | undefined,
           type: "sync",
         });
       }
@@ -1607,13 +1619,14 @@ function buildEndpointsData(scanResults: CodeScanResult[], output: CrossCtxOutpu
         requestBody: serializePayload(ep.requestBody),
         response: serializePayload(ep.response),
         hasChain: ep.outboundCalls.length > 0,
-        messageEvents: ep.messageEvents?.map((me) => ({
-          topic: me.topic,
-          direction: me.direction,
-          pattern: me.pattern,
-          payloadType: me.payloadType,
-        })) ?? [],
-      }))
+        messageEvents:
+          ep.messageEvents?.map((me) => ({
+            topic: me.topic,
+            direction: me.direction,
+            pattern: me.pattern,
+            payloadType: me.payloadType,
+          })) ?? [],
+      })),
     );
   }
 

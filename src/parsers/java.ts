@@ -29,7 +29,7 @@ const IGNORE = [
 export async function parseJavaProject(
   projectPath: string,
   language: DetectedLanguage,
-  serviceName: string
+  serviceName: string,
 ): Promise<CodeScanResult> {
   const javaFiles = await fg(["**/*.java"], {
     cwd: projectPath,
@@ -53,18 +53,22 @@ export async function parseJavaProject(
   for (const file of allFiles) {
     try {
       fileContents.set(file, await readFile(file, "utf-8"));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Also read properties/yaml config for base URLs
   const configFiles = await fg(
     ["**/application.properties", "**/application.yml", "**/application.yaml", "**/bootstrap.yml"],
-    { cwd: projectPath, ignore: IGNORE, absolute: true, onlyFiles: true }
+    { cwd: projectPath, ignore: IGNORE, absolute: true, onlyFiles: true },
   );
   for (const file of configFiles) {
     try {
       fileContents.set(file, await readFile(file, "utf-8"));
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Extract DTOs first
@@ -102,7 +106,7 @@ export async function parseJavaProject(
 function extractJavaEndpoints(
   fileContents: Map<string, string>,
   serviceName: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
 
@@ -182,7 +186,7 @@ function extractHandlers(
   filePath: string,
   serviceName: string,
   controllerPrefix: string,
-  dtoMap: Map<string, PayloadShape>
+  dtoMap: Map<string, PayloadShape>,
 ): SourceEndpoint[] {
   const endpoints: SourceEndpoint[] = [];
   const lines = content.split("\n");
@@ -200,7 +204,7 @@ function extractHandlers(
 
     // Match @GetMapping, @PostMapping, @PutMapping, @DeleteMapping, @PatchMapping
     const mappingMatch = line.match(
-      /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(?:\(([^)]*)\))?/
+      /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(?:\(([^)]*)\))?/,
     );
     if (!mappingMatch) continue;
 
@@ -229,7 +233,10 @@ function extractHandlers(
     const fullPath = combinePaths(controllerPrefix, routePath);
 
     // Find method signature below annotation
-    const { methodName, returnType, paramLine, bodyStartLine } = extractJavaMethodSignature(lines, i + 1);
+    const { methodName, returnType, paramLine, bodyStartLine } = extractJavaMethodSignature(
+      lines,
+      i + 1,
+    );
 
     // Request body from @RequestBody param
     const requestBody = extractRequestBodyFromParams(paramLine, dtoMap);
@@ -243,7 +250,8 @@ function extractHandlers(
     // Scope outbound calls to this exact method body using brace tracking
     const methodBodyRange = getMethodBodyLineRange(lines, bodyStartLine);
     const scopedCalls = allOutboundCalls.filter(
-      (c) => c.line !== undefined && c.line >= methodBodyRange.start && c.line <= methodBodyRange.end
+      (c) =>
+        c.line !== undefined && c.line >= methodBodyRange.start && c.line <= methodBodyRange.end,
     );
 
     endpoints.push({
@@ -267,7 +275,7 @@ function extractHandlers(
 
 function extractJavaMethodSignature(
   lines: string[],
-  startIdx: number
+  startIdx: number,
 ): { methodName: string; returnType: string; paramLine: string; bodyStartLine: number } {
   let methodName = "unknown";
   let returnType = "void";
@@ -280,7 +288,7 @@ function extractJavaMethodSignature(
 
     // public ResponseEntity<UserDto> createUser(@RequestBody CreateUserDto dto) {
     const sig = line.match(
-      /(?:public|protected|private)?\s*(?:static\s+)?(?:@\w+\s+)*([\w<>[\],\s]+?)\s+(\w+)\s*\(([^)]*)/
+      /(?:public|protected|private)?\s*(?:static\s+)?(?:@\w+\s+)*([\w<>[\],\s]+?)\s+(\w+)\s*\(([^)]*)/,
     );
     if (sig) {
       returnType = sig[1].trim();
@@ -307,7 +315,10 @@ function extractJavaMethodSignature(
   return { methodName, returnType, paramLine, bodyStartLine };
 }
 
-function extractRequestBodyFromParams(paramLine: string, dtoMap: Map<string, PayloadShape>): PayloadShape | undefined {
+function extractRequestBodyFromParams(
+  paramLine: string,
+  dtoMap: Map<string, PayloadShape>,
+): PayloadShape | undefined {
   // @RequestBody CreateUserDto createUserDto
   const match = paramLine.match(/@RequestBody\s+(?:final\s+)?(\w+(?:<[^>]+>)?)\s+\w+/);
   if (!match) return undefined;
@@ -317,7 +328,10 @@ function extractRequestBodyFromParams(paramLine: string, dtoMap: Map<string, Pay
   return { typeName, fields: [], source: "dto-class" };
 }
 
-function extractResponseFromReturnType(returnType: string, dtoMap: Map<string, PayloadShape>): PayloadShape | undefined {
+function extractResponseFromReturnType(
+  returnType: string,
+  dtoMap: Map<string, PayloadShape>,
+): PayloadShape | undefined {
   if (!returnType || returnType === "void" || returnType === "Void") return undefined;
 
   // ResponseEntity<UserDto> → UserDto
@@ -373,18 +387,36 @@ function extractJavaOutboundCalls(content: string, filePath: string): OutboundCa
   const calls: OutboundCall[] = [];
   const patterns: Array<{ regex: RegExp; pattern: string }> = [
     // RestTemplate: restTemplate.getForEntity("url", ...)  / restTemplate.postForEntity("url", ...)
-    { regex: /\brestTemplate\.(get|post|put|delete|exchange|postFor|getFor)\w*\s*\(\s*["'`]([^"'`\n]+)["'`]/gi, pattern: "RestTemplate" },
+    {
+      regex:
+        /\brestTemplate\.(get|post|put|delete|exchange|postFor|getFor)\w*\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "RestTemplate",
+    },
     // RestTemplate with variable: restTemplate.getForEntity(serviceUrl + "/path", ...)
-    { regex: /\brestTemplate\.(get|post|put|delete|exchange|postFor|getFor)\w*\s*\(\s*([\w.]+\s*\+\s*["'][^"'\n]+["'])/gi, pattern: "RestTemplate" },
+    {
+      regex:
+        /\brestTemplate\.(get|post|put|delete|exchange|postFor|getFor)\w*\s*\(\s*([\w.]+\s*\+\s*["'][^"'\n]+["'])/gi,
+      pattern: "RestTemplate",
+    },
     // WebClient: webClient.get().uri("url") / .post().uri(...)
-    { regex: /\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*["'`]([^"'`\n]+)["'`]/gi, pattern: "WebClient" },
+    {
+      regex: /\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "WebClient",
+    },
     // WebClient with variable uri
-    { regex: /\.uri\s*\(\s*([\w.]+\s*(?:\+|\.concat)\s*["'][^"'\n]*["']|["'][^"'\n]+["'])/gi, pattern: "WebClient" },
+    {
+      regex: /\.uri\s*\(\s*([\w.]+\s*(?:\+|\.concat)\s*["'][^"'\n]*["']|["'][^"'\n]+["'])/gi,
+      pattern: "WebClient",
+    },
     // HttpClient: httpClient.send(HttpRequest.newBuilder().uri(URI.create("url")))
     { regex: /URI\.create\s*\(\s*["'`]([^"'`\n]+)["'`]/gi, pattern: "HttpClient" },
     // FeignClient: detected via @FeignClient annotation — handled in extractFeignClients
     // Spring RestClient (Spring 6.1+)
-    { regex: /restClient\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*["'`]([^"'`\n]+)["'`]/gi, pattern: "RestClient" },
+    {
+      regex:
+        /restClient\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "RestClient",
+    },
   ];
 
   for (const { regex, pattern } of patterns) {
@@ -429,7 +461,7 @@ function extractFeignClientCalls(content: string, filePath: string): OutboundCal
 
   // @FeignClient(name = "order-service", url = "${order.service.url}")
   const feignMatch = content.match(
-    /@FeignClient\s*\(\s*(?:name\s*=\s*)?["']([^"']+)["'][^)]*(?:url\s*=\s*["']([^"']+)["'])?/
+    /@FeignClient\s*\(\s*(?:name\s*=\s*)?["']([^"']+)["'][^)]*(?:url\s*=\s*["']([^"']+)["'])?/,
   );
   if (!feignMatch) return calls;
 
@@ -439,14 +471,17 @@ function extractFeignClientCalls(content: string, filePath: string): OutboundCal
   // Find all method mappings in the Feign interface
   const lines = content.split("\n");
   const METHOD_MAP: Record<string, string> = {
-    GetMapping: "GET", PostMapping: "POST", PutMapping: "PUT",
-    DeleteMapping: "DELETE", PatchMapping: "PATCH",
+    GetMapping: "GET",
+    PostMapping: "POST",
+    PutMapping: "PUT",
+    DeleteMapping: "DELETE",
+    PatchMapping: "PATCH",
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const mappingMatch = line.match(
-      /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*\(\s*(?:value\s*=\s*)?["']([^"']*)["']/
+      /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*\(\s*(?:value\s*=\s*)?["']([^"']*)["']/,
     );
     if (!mappingMatch) continue;
 
@@ -492,7 +527,6 @@ function extractJavaDTOs(fileContents: Map<string, string>): Map<string, Payload
   return dtoMap;
 }
 
-
 function extractJavaPayloadShapes(content: string): PayloadShape[] {
   const shapes: PayloadShape[] = [];
 
@@ -508,11 +542,17 @@ function extractJavaPayloadShapes(content: string): PayloadShape[] {
   }
 
   // Java classes (DTOs, entities) — use brace-depth scanner for proper nested generic handling
-  const classRegex = /(?:public\s+)?class\s+(\w+)(?:\s+extends\s+\w+)?(?:\s+implements\s+[^{]+)?\s*\{/g;
+  const classRegex =
+    /(?:public\s+)?class\s+(\w+)(?:\s+extends\s+\w+)?(?:\s+implements\s+[^{]+)?\s*\{/g;
 
   while ((match = classRegex.exec(content)) !== null) {
     const typeName = match[1];
-    if (["Application", "Configuration", "Controller", "Service", "Repository"].some(s => typeName.endsWith(s))) continue;
+    if (
+      ["Application", "Configuration", "Controller", "Service", "Repository"].some((s) =>
+        typeName.endsWith(s),
+      )
+    )
+      continue;
 
     // Extract class body using brace-depth tracking to handle nested generics
     const bodyStart = match.index + match[0].length;
@@ -557,18 +597,25 @@ function extractJavaClassBodyByBraceDepth(content: string, startIdx: number): st
 }
 
 function parseRecordParams(params: string): PayloadField[] {
-  return params.split(",").map(p => {
-    const parts = p.trim().split(/\s+/);
-    const type = parts.slice(0, -1).join(" ").replace(/@\w+\s*/g, "");
-    const name = parts[parts.length - 1] ?? "unknown";
-    return { name: name.trim(), type: simplifyJavaType(type.trim()), required: true };
-  }).filter(f => f.name && f.type);
+  return params
+    .split(",")
+    .map((p) => {
+      const parts = p.trim().split(/\s+/);
+      const type = parts
+        .slice(0, -1)
+        .join(" ")
+        .replace(/@\w+\s*/g, "");
+      const name = parts[parts.length - 1] ?? "unknown";
+      return { name: name.trim(), type: simplifyJavaType(type.trim()), required: true };
+    })
+    .filter((f) => f.name && f.type);
 }
 
 function parseJavaClassBody(body: string): PayloadField[] {
   const fields: PayloadField[] = [];
   // private String email; / private final Long id; / protected Integer count;
-  const fieldRegex = /(?:@\w+(?:\([^)]*\))?\s*)*(?:private|protected|public)\s+(?:final\s+)?(?:static\s+)?(\w[\w<>,\s]*?)\s+(\w+)\s*[;=]/g;
+  const fieldRegex =
+    /(?:@\w+(?:\([^)]*\))?\s*)*(?:private|protected|public)\s+(?:final\s+)?(?:static\s+)?(\w[\w<>,\s]*?)\s+(\w+)\s*[;=]/g;
   let match: RegExpExecArray | null;
 
   while ((match = fieldRegex.exec(body)) !== null) {
@@ -590,28 +637,46 @@ function parseJavaClassBody(body: string): PayloadField[] {
 }
 
 function parseKotlinDataClassParams(params: string): PayloadField[] {
-  return params.split(",").map(p => {
-    // val email: String, var name: String? = null
-    const m = p.trim().match(/(?:val|var)\s+(\w+)\s*:\s*([\w?<>]+)/);
-    if (!m) return null;
-    return {
-      name: m[1],
-      type: simplifyJavaType(m[2].replace("?", "")),
-      required: !m[2].includes("?"),
-    };
-  }).filter(Boolean) as PayloadField[];
+  return params
+    .split(",")
+    .map((p) => {
+      // val email: String, var name: String? = null
+      const m = p.trim().match(/(?:val|var)\s+(\w+)\s*:\s*([\w?<>]+)/);
+      if (!m) return null;
+      return {
+        name: m[1],
+        type: simplifyJavaType(m[2].replace("?", "")),
+        required: !m[2].includes("?"),
+      };
+    })
+    .filter(Boolean) as PayloadField[];
 }
 
 function simplifyJavaType(type: string): string {
   const map: Record<string, string> = {
-    "String": "string", "Integer": "integer", "int": "integer",
-    "Long": "long", "long": "long", "Boolean": "boolean", "boolean": "boolean",
-    "Double": "double", "double": "double", "Float": "float", "float": "float",
-    "BigDecimal": "decimal", "LocalDate": "date", "LocalDateTime": "datetime",
-    "ZonedDateTime": "datetime", "UUID": "uuid", "Object": "object",
+    String: "string",
+    Integer: "integer",
+    int: "integer",
+    Long: "long",
+    long: "long",
+    Boolean: "boolean",
+    boolean: "boolean",
+    Double: "double",
+    double: "double",
+    Float: "float",
+    float: "float",
+    BigDecimal: "decimal",
+    LocalDate: "date",
+    LocalDateTime: "datetime",
+    ZonedDateTime: "datetime",
+    UUID: "uuid",
+    Object: "object",
   };
 
-  const base = type.replace(/\[\]$/, "").replace(/<[^>]+>/, "").trim();
+  const base = type
+    .replace(/\[\]$/, "")
+    .replace(/<[^>]+>/, "")
+    .trim();
   const mapped = map[base];
   if (mapped) return type.includes("[]") || type.match(/<[^>]*>/) ? `${mapped}[]` : mapped;
 
@@ -635,7 +700,8 @@ function extractJavaServiceUrlHints(fileContents: Map<string, string>): ServiceU
 
     if (fileName.endsWith(".properties")) {
       // order.service.url=http://order-service:8082
-      const propRegex = /^([a-z][a-z0-9.-]*(?:url|host|endpoint|base-url|service)[a-z0-9.-]*)\s*=\s*(.+)$/gim;
+      const propRegex =
+        /^([a-z][a-z0-9.-]*(?:url|host|endpoint|base-url|service)[a-z0-9.-]*)\s*=\s*(.+)$/gim;
       let match: RegExpExecArray | null;
       while ((match = propRegex.exec(content)) !== null) {
         const key = match[1].toUpperCase().replace(/\./g, "_");
@@ -691,7 +757,10 @@ function extractJavaServiceUrlHints(fileContents: Map<string, string>): ServiceU
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Returns {start, end} line numbers (1-based) of the method body starting at signatureLine */
-function getMethodBodyLineRange(lines: string[], signatureLine: number): { start: number; end: number } {
+function getMethodBodyLineRange(
+  lines: string[],
+  signatureLine: number,
+): { start: number; end: number } {
   let depth = 0;
   let started = false;
   let startLine = signatureLine + 1;
@@ -699,10 +768,19 @@ function getMethodBodyLineRange(lines: string[], signatureLine: number): { start
 
   for (let i = signatureLine; i < lines.length; i++) {
     for (const ch of lines[i]) {
-      if (ch === "{") { depth++; started = true; if (depth === 1) startLine = i + 1; }
-      if (ch === "}") { depth--; }
+      if (ch === "{") {
+        depth++;
+        started = true;
+        if (depth === 1) startLine = i + 1;
+      }
+      if (ch === "}") {
+        depth--;
+      }
     }
-    if (started && depth === 0) { endLine = i + 1; break; }
+    if (started && depth === 0) {
+      endLine = i + 1;
+      break;
+    }
   }
 
   return { start: startLine, end: endLine };
@@ -721,7 +799,7 @@ function combinePaths(prefix: string, route: string): string {
 
 function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
   const seen = new Set<string>();
-  return calls.filter(c => {
+  return calls.filter((c) => {
     const key = `${c.method}:${c.rawUrl}:${c.line}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -731,10 +809,16 @@ function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {
   const candidates = [
-    "src/main/resources/openapi.yaml", "src/main/resources/openapi.yml",
-    "src/main/resources/static/openapi.yaml", "src/main/resources/api-docs.yaml",
-    "openapi.yaml", "openapi.yml", "swagger.yaml", "swagger.yml",
-    "docs/openapi.yaml", "api/openapi.yaml",
+    "src/main/resources/openapi.yaml",
+    "src/main/resources/openapi.yml",
+    "src/main/resources/static/openapi.yaml",
+    "src/main/resources/api-docs.yaml",
+    "openapi.yaml",
+    "openapi.yml",
+    "swagger.yaml",
+    "swagger.yml",
+    "docs/openapi.yaml",
+    "api/openapi.yaml",
   ];
 
   for (const candidate of candidates) {
@@ -743,7 +827,9 @@ async function findOpenApiSpec(projectPath: string): Promise<string | null> {
       const { access } = await import("fs/promises");
       await access(full);
       return full;
-    } catch { /* continue */ }
+    } catch {
+      /* continue */
+    }
   }
   return null;
 }
