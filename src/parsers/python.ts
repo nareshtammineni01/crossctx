@@ -819,7 +819,7 @@ function parsePydanticClassBody(body: string): PayloadField[] {
 
   // field_name: type = default  or  field_name: type
   // Also: field_name: Optional[str] = None
-  const fieldRegex = /^\s{4,}(\w+)\s*:\s*([\w[], |"']+?)(?:\s*=\s*.+)?$/gm;
+  const fieldRegex = /^\s{4,}(\w+)\s*:\s*([\w[\], |"']+?)(?:\s*=\s*.+)?$/gm;
   let match: RegExpExecArray | null;
 
   while ((match = fieldRegex.exec(body)) !== null) {
