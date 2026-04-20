@@ -11,6 +11,7 @@ import type {
   DetectedLanguage,
 } from "../types/index.js";
 import { extractMessageEvents } from "./messaging.js";
+import { annotateConditionals } from "./conditional.js";
 
 const IGNORE = [
   "**/node_modules/**",
@@ -472,7 +473,9 @@ function extractOutboundCalls(content: string, filePath: string): OutboundCall[]
     }
   }
 
-  return deduplicateCalls(calls);
+  const deduped = deduplicateCalls(calls);
+  annotateConditionals(deduped, content);
+  return deduped;
 }
 
 function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {

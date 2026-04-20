@@ -11,6 +11,7 @@ import type {
   DetectedLanguage,
 } from "../types/index.js";
 import { scanProtoFiles, grpcServicesToEndpoints, extractGrpcOutboundCalls } from "./grpc.js";
+import { annotateConditionals } from "./conditional.js";
 
 const IGNORE = ["**/vendor/**", "**/.git/**", "**/*_test.go", "**/testdata/**", "**/*.pb.go"];
 
@@ -835,7 +836,9 @@ function extractGoOutboundCalls(content: string, filePath: string): OutboundCall
     }
   }
 
-  return deduplicateCalls(calls);
+  const deduped = deduplicateCalls(calls);
+  annotateConditionals(deduped, content);
+  return deduped;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

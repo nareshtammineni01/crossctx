@@ -128,6 +128,10 @@ export interface OutboundCall {
   line?: number;
   /** Confidence of service resolution 0-1 */
   confidence: number;
+  /** True when the call is inside an if/else/switch/ternary/try-catch block */
+  conditional?: boolean;
+  /** Best-effort extracted condition text, e.g. "if user.is_premium" */
+  conditionHint?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -188,6 +192,10 @@ export interface CallChainEdge {
   toService: string;
   rawUrl: string;
   confidence: number;
+  /** True when the call is inside a conditional block */
+  conditional?: boolean;
+  /** Best-effort extracted condition text */
+  conditionHint?: string;
 }
 
 // ─────────────────────────────────────────────

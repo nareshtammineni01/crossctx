@@ -15,6 +15,7 @@
 import { readFile } from "fs/promises";
 import fg from "fast-glob";
 import type { OutboundCall, PayloadShape, SourceEndpoint } from "../types/index.js";
+import { annotateConditionals } from "./conditional.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GraphQL schema types
@@ -178,18 +179,25 @@ export function extractGraphQLOutboundCalls(
   filePath: string,
   language: "typescript" | "python" | "go" | "java",
 ): OutboundCall[] {
+  let calls: OutboundCall[];
   switch (language) {
     case "typescript":
-      return extractTsGraphQLCalls(content, filePath);
+      calls = extractTsGraphQLCalls(content, filePath);
+      break;
     case "python":
-      return extractPyGraphQLCalls(content, filePath);
+      calls = extractPyGraphQLCalls(content, filePath);
+      break;
     case "go":
-      return extractGoGraphQLCalls(content, filePath);
+      calls = extractGoGraphQLCalls(content, filePath);
+      break;
     case "java":
-      return extractJavaGraphQLCalls(content, filePath);
+      calls = extractJavaGraphQLCalls(content, filePath);
+      break;
     default:
       return [];
   }
+  annotateConditionals(calls, content);
+  return calls;
 }
 
 function extractTsGraphQLCalls(content: string, filePath: string): OutboundCall[] {

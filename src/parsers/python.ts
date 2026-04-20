@@ -12,6 +12,7 @@ import type {
   SupportedFramework,
 } from "../types/index.js";
 import { extractMessageEvents } from "./messaging.js";
+import { annotateConditionals } from "./conditional.js";
 
 const IGNORE = [
   "**/__pycache__/**",
@@ -765,7 +766,9 @@ function extractPythonOutboundCalls(content: string, filePath: string): Outbound
     }
   }
 
-  return deduplicateCalls(calls);
+  const deduped = deduplicateCalls(calls);
+  annotateConditionals(deduped, content);
+  return deduped;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

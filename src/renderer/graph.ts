@@ -268,6 +268,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
 .conf-dot.high { background: #3fb950; }
 .conf-dot.med { background: #d29922; }
 .conf-dot.low { background: #f85149; }
+.conf-dot.conditional { background: #a371f7; width: 12px; height: 2px; border-radius: 1px; background: repeating-linear-gradient(to right, #a371f7 0, #a371f7 2px, transparent 2px, transparent 5px); }
 
 /* ── Right Panel ── */
 #panel {
@@ -463,6 +464,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monos
       <div class="conf-item"><span class="conf-dot high"></span>High confidence (≥90%)</div>
       <div class="conf-item"><span class="conf-dot med"></span>Medium (70–89%)</div>
       <div class="conf-item"><span class="conf-dot low"></span>Low (&lt;70%)</div>
+      <div class="conf-item"><span class="conf-dot conditional"></span>Conditional call</div>
     </div>
   </div>
 
@@ -575,6 +577,8 @@ function buildServiceElements() {
       rawUrl: e.rawUrl,
       callPattern: e.callPattern ?? '',
       type: e.type ?? 'sync',
+      conditional: e.conditional ? 'true' : undefined,
+      conditionHint: e.conditionHint,
     }
   }));
   return { nodes, edges };
@@ -647,6 +651,8 @@ function buildControllerElements() {
           target: tgtNodeId,
           confidence: edge.confidence,
           type: 'sync',
+          conditional: edge.conditional ? 'true' : undefined,
+          conditionHint: edge.conditionHint,
         });
       }
     });
@@ -745,6 +751,10 @@ const cyStyle = [
   {
     selector: 'edge[type="async"]',
     style: { 'line-style': 'dashed', 'line-color': '#d29922', 'target-arrow-color': '#d29922', 'line-dash-pattern': [4, 4] }
+  },
+  {
+    selector: 'edge[conditional="true"]',
+    style: { 'line-style': 'dotted', 'line-color': '#a371f7', 'target-arrow-color': '#a371f7', 'line-dash-pattern': [2, 4], 'opacity': 0.85 }
   },
 ];
 
@@ -1179,12 +1189,20 @@ cy.on('mouseover', 'edge', function(e) {
   const from = edge.data('fromService') ?? edge.data('from') ?? '';
   const to = edge.data('toService') ?? edge.data('to') ?? '';
   const via = edge.data('callPattern') ?? edge.data('rawUrl') ?? '';
+  const isConditional = edge.data('conditional') === 'true';
+  const conditionHint = edge.data('conditionHint') ?? '';
   const confColor = conf >= 90 ? '#3fb950' : conf >= 70 ? '#d29922' : '#f85149';
 
   const tip = document.createElement('div');
   tip.id = 'edge-tooltip';
-  tip.style.cssText = 'position:fixed;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#c9d1d9;pointer-events:none;z-index:1000;max-width:200px;word-break:break-word;';
+  tip.style.cssText = 'position:fixed;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:11px;color:#c9d1d9;pointer-events:none;z-index:1000;max-width:240px;word-break:break-word;';
   let tipContent = '<div style="color:#f0f6fc;margin-bottom:4px;font-weight:600">' + from + ' → ' + to + '</div>';
+  if (isConditional) {
+    tipContent += '<div style="margin-bottom:4px"><span style="background:#3d1f6e;color:#a371f7;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:600">⚡ Conditional</span></div>';
+    if (conditionHint) {
+      tipContent += '<div style="color:#a371f7;font-style:italic;margin-bottom:4px;word-break:break-all">' + conditionHint + '</div>';
+    }
+  }
   tipContent += '<div>Confidence: <strong style="color:' + confColor + '">' + conf + '%</strong></div>';
   if (via) tipContent += '<div style="color:#8b949e;margin-top:4px;word-break:break-all">' + via + '</div>';
   tip.innerHTML = tipContent;
@@ -1676,6 +1694,8 @@ function buildGraphEdges(
     rawUrl?: string;
     callPattern?: string;
     type?: "sync" | "async";
+    conditional?: boolean;
+    conditionHint?: string;
   }> = [];
 
   // From call chains
@@ -1694,6 +1714,8 @@ function buildGraphEdges(
             | string
             | undefined,
           type: "sync",
+          conditional: edge.conditional,
+          conditionHint: edge.conditionHint,
         });
       }
     }

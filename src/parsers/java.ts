@@ -11,6 +11,7 @@ import type {
   DetectedLanguage,
 } from "../types/index.js";
 import { extractMessageEvents } from "./messaging.js";
+import { annotateConditionals } from "./conditional.js";
 
 const IGNORE = [
   "**/target/**",
@@ -453,7 +454,9 @@ function extractJavaOutboundCalls(content: string, filePath: string): OutboundCa
   const feignCalls = extractFeignClientCalls(content, filePath);
   calls.push(...feignCalls);
 
-  return deduplicateCalls(calls);
+  const deduped = deduplicateCalls(calls);
+  annotateConditionals(deduped, content);
+  return deduped;
 }
 
 function extractFeignClientCalls(content: string, filePath: string): OutboundCall[] {

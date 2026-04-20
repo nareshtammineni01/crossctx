@@ -16,6 +16,7 @@
 import { readFile } from "fs/promises";
 import fg from "fast-glob";
 import type { OutboundCall, PayloadShape, SourceEndpoint } from "../types/index.js";
+import { annotateConditionals } from "./conditional.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Proto file types
@@ -170,20 +171,28 @@ export function extractGrpcOutboundCalls(
   filePath: string,
   language: "go" | "typescript" | "python" | "java" | "csharp",
 ): OutboundCall[] {
+  let calls: OutboundCall[];
   switch (language) {
     case "go":
-      return extractGoGrpcCalls(content, filePath);
+      calls = extractGoGrpcCalls(content, filePath);
+      break;
     case "typescript":
-      return extractTsGrpcCalls(content, filePath);
+      calls = extractTsGrpcCalls(content, filePath);
+      break;
     case "python":
-      return extractPyGrpcCalls(content, filePath);
+      calls = extractPyGrpcCalls(content, filePath);
+      break;
     case "java":
-      return extractJavaGrpcCalls(content, filePath);
+      calls = extractJavaGrpcCalls(content, filePath);
+      break;
     case "csharp":
-      return extractCsGrpcCalls(content, filePath);
+      calls = extractCsGrpcCalls(content, filePath);
+      break;
     default:
       return [];
   }
+  annotateConditionals(calls, content);
+  return calls;
 }
 
 function extractGoGrpcCalls(content: string, filePath: string): OutboundCall[] {

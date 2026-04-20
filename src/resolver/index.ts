@@ -645,6 +645,8 @@ function walkChain(
       toService: resolvedCall.resolvedService,
       rawUrl: call.rawUrl,
       confidence: resolvedCall.confidence,
+      ...(call.conditional && { conditional: true }),
+      ...(call.conditionHint && { conditionHint: call.conditionHint }),
     };
 
     if (existingEdgeIdx === -1) {

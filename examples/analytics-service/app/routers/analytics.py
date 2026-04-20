@@ -14,14 +14,22 @@ USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8080")
 PAYMENT_SERVICE_URL = os.getenv("PAYMENT_SERVICE_URL", "http://payment-service:8081")
 
 
+NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8085")
+
+
 @router.get("/revenue", response_model=RevenueReport)
-async def get_revenue_report(period: str = "daily"):
+async def get_revenue_report(period: str = "daily", notify: bool = False):
     """Get revenue report for a given period.
     Fetches raw order data from order-service and payment data from payment-service.
+    Conditionally pings notification-service if notify=True.
     """
     async with httpx.AsyncClient() as client:
         orders = await client.get(f"{ORDER_SERVICE_URL}/api/orders?period={period}")
         payments = await client.get(f"{PAYMENT_SERVICE_URL}/api/payments?period={period}")
+        # Only notify if the caller requested it
+        if notify:
+            await client.post(f"{NOTIFICATION_SERVICE_URL}/api/notifications",
+                              json={"type": "revenue_report", "period": period})
 
     return RevenueReport(
         period=period,
