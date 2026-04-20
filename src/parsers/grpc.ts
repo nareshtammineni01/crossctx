@@ -305,8 +305,7 @@ function extractJavaGrpcCalls(content: string, filePath: string): OutboundCall[]
   const calls: OutboundCall[] = [];
 
   // ManagedChannelBuilder.forAddress("order-service", 50051) or forTarget("order-service:50051")
-  const channelRegex =
-    /ManagedChannelBuilder\.(?:forAddress|forTarget)\s*\(\s*["']([^"']+)["']/g;
+  const channelRegex = /ManagedChannelBuilder\.(?:forAddress|forTarget)\s*\(\s*["']([^"']+)["']/g;
   let m: RegExpExecArray | null;
   while ((m = channelRegex.exec(content)) !== null) {
     const target = m[1];

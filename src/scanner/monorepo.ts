@@ -29,9 +29,25 @@ export interface DiscoveredService {
 }
 
 const SKIP_DIRS = new Set([
-  "node_modules", "vendor", "dist", "build", ".git", "__pycache__",
-  ".venv", "venv", "env", ".env", "target", "bin", "obj", ".gradle",
-  "coverage", ".nyc_output", ".next", ".nuxt", "out",
+  "node_modules",
+  "vendor",
+  "dist",
+  "build",
+  ".git",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "env",
+  ".env",
+  "target",
+  "bin",
+  "obj",
+  ".gradle",
+  "coverage",
+  ".nyc_output",
+  ".next",
+  ".nuxt",
+  "out",
 ]);
 
 const LANGUAGE_MARKERS: Array<{
@@ -161,8 +177,6 @@ export function deduplicateServiceRoots(services: DiscoveredService[]): Discover
   const paths = services.map((s) => s.path);
   return services.filter((s) => {
     // Keep if no other discovered path is a parent of this one
-    return !paths.some(
-      (p) => p !== s.path && s.path.startsWith(p + path.sep),
-    );
+    return !paths.some((p) => p !== s.path && s.path.startsWith(p + path.sep));
   });
 }

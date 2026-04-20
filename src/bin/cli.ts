@@ -57,7 +57,10 @@ async function runScan(
     // ── Phase 1: Source code scanning ──────────────────────────────────────
     const codeScanResults: CodeScanResult[] = [];
     // v0.3: collected per-service file contents for shared library detection
-    const serviceContents = new Map<string, { serviceName: string; language: string; files: Map<string, string> }>();
+    const serviceContents = new Map<
+      string,
+      { serviceName: string; language: string; files: Map<string, string> }
+    >();
 
     if (!options.openapiOnly) {
       if (!options.quiet && !options.watch)
@@ -70,7 +73,8 @@ async function runScan(
       if (options.monorepo) {
         effectivePaths = [];
         for (const rootPath of resolvedPaths) {
-          if (!options.quiet) console.log(`  → Discovering service roots under ${path.basename(rootPath)}...`);
+          if (!options.quiet)
+            console.log(`  → Discovering service roots under ${path.basename(rootPath)}...`);
           const discovered = deduplicateServiceRoots(await discoverServiceRoots(rootPath));
           if (!options.quiet) console.log(`    Found ${discovered.length} service(s)`);
           effectivePaths.push(...discovered.map((d) => d.path));
@@ -165,13 +169,18 @@ async function runScan(
             try {
               const gqlResult = await scanGraphQLSchemas(projectPath);
               if (gqlResult.operations.length > 0) {
-                const gqlEndpoints = graphqlOperationsToEndpoints(gqlResult.operations, scanResult.serviceName);
+                const gqlEndpoints = graphqlOperationsToEndpoints(
+                  gqlResult.operations,
+                  scanResult.serviceName,
+                );
                 scanResult.endpoints.push(...gqlEndpoints);
                 if (!options.quiet) {
                   console.log(`    + ${gqlEndpoints.length} GraphQL operation(s) from schema`);
                 }
               }
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
 
             // ── v0.3: DB usage detection ──────────────────────────────────
             if (scanResult.language.language !== "unknown") {
@@ -188,7 +197,13 @@ async function runScan(
                 try {
                   const dbFiles = await fg([pattern], {
                     cwd: projectPath,
-                    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/vendor/**"],
+                    ignore: [
+                      "**/node_modules/**",
+                      "**/dist/**",
+                      "**/build/**",
+                      "**/.git/**",
+                      "**/vendor/**",
+                    ],
                     absolute: true,
                     onlyFiles: true,
                   });
@@ -196,7 +211,9 @@ async function runScan(
                   for (const f of dbFiles.slice(0, 200)) {
                     try {
                       dbFileContents.set(f, await readFileAsync(f, "utf-8"));
-                    } catch { /* skip */ }
+                    } catch {
+                      /* skip */
+                    }
                   }
                   scanResult.dbUsage = extractDbUsage(dbFileContents, dbLang);
 
@@ -206,7 +223,9 @@ async function runScan(
                     language: dbLang,
                     files: dbFileContents,
                   });
-                } catch { /* skip db scan */ }
+                } catch {
+                  /* skip db scan */
+                }
               }
             }
 

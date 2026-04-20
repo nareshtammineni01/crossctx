@@ -92,8 +92,7 @@ function parseGraphQLSchema(
     // createOrder(input: CreateOrderInput!): Order
     // orders(filter: OrderFilter, page: Int): [Order!]!
     // getUser(id: ID!): User
-    const fieldRegex =
-      /^\s+(\w+)\s*(?:\([^)]*(?::\s*(\w+)[!?\][\s]*)?[^)]*\))?\s*:\s*\[?(\w+)/gm;
+    const fieldRegex = /^\s+(\w+)\s*(?:\([^)]*(?::\s*(\w+)[!?\][\s]*)?[^)]*\))?\s*:\s*\[?(\w+)/gm;
     let fm: RegExpExecArray | null;
 
     while ((fm = fieldRegex.exec(body)) !== null) {
@@ -131,9 +130,8 @@ function parseGraphQLSchema(
       if (opMatch) {
         operations.push({
           name: opMatch[2],
-          operationType:
-            opMatch[1].charAt(0).toUpperCase() + opMatch[1].slice(1).toLowerCase() as
-              "Query" | "Mutation" | "Subscription",
+          operationType: (opMatch[1].charAt(0).toUpperCase() +
+            opMatch[1].slice(1).toLowerCase()) as "Query" | "Mutation" | "Subscription",
           sourceFile: filePath,
           line: lineNum,
         });
@@ -159,8 +157,12 @@ export function graphqlOperationsToEndpoints(
     fullPath: `/graphql/${op.name}`,
     handlerMethod: op.name,
     summary: `${op.operationType}: ${op.name}`,
-    requestBody: op.inputType ? { typeName: op.inputType, fields: [], source: "dto-class" as const } : undefined,
-    response: op.returnType ? { typeName: op.returnType, fields: [], source: "dto-class" as const } : undefined,
+    requestBody: op.inputType
+      ? { typeName: op.inputType, fields: [], source: "dto-class" as const }
+      : undefined,
+    response: op.returnType
+      ? { typeName: op.returnType, fields: [], source: "dto-class" as const }
+      : undefined,
     sourceFile: op.sourceFile,
     line: op.line,
     outboundCalls: [],
@@ -194,7 +196,8 @@ function extractTsGraphQLCalls(content: string, filePath: string): OutboundCall[
   const calls: OutboundCall[] = [];
 
   // Apollo Client: client.query({ query: GET_USERS }) or client.mutate({ mutation: CREATE_ORDER })
-  const apolloQueryRegex = /client\.(query|mutate|subscribe)\s*\(\s*\{[^}]*?(query|mutation):\s*(\w+)/gs;
+  const apolloQueryRegex =
+    /client\.(query|mutate|subscribe)\s*\(\s*\{[^}]*?(query|mutation):\s*(\w+)/gs;
   let m: RegExpExecArray | null;
   while ((m = apolloQueryRegex.exec(content)) !== null) {
     const lineNum = content.substring(0, m.index).split("\n").length;
@@ -209,8 +212,7 @@ function extractTsGraphQLCalls(content: string, filePath: string): OutboundCall[
   }
 
   // graphql-request: request(endpoint, query) or request(endpoint, MUTATION)
-  const gqlRequestRegex =
-    /(?:request|gql)\s*\(\s*["'`]([^"'`\n]+)["'`]\s*,\s*(\w+|`[^`]+`)/g;
+  const gqlRequestRegex = /(?:request|gql)\s*\(\s*["'`]([^"'`\n]+)["'`]\s*,\s*(\w+|`[^`]+`)/g;
   while ((m = gqlRequestRegex.exec(content)) !== null) {
     const endpoint = m[1];
     const lineNum = content.substring(0, m.index).split("\n").length;

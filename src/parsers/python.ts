@@ -266,7 +266,19 @@ function extractFastAPIRequestBody(
     const [, paramName, typeName] = match;
 
     // Skip FastAPI built-in types and path/query params
-    if (["Request", "Response", "BackgroundTasks", "Query", "Header", "Cookie", "File", "Form"].includes(typeName)) continue;
+    if (
+      [
+        "Request",
+        "Response",
+        "BackgroundTasks",
+        "Query",
+        "Header",
+        "Cookie",
+        "File",
+        "Form",
+      ].includes(typeName)
+    )
+      continue;
     // Path params are usually lowercase primitives
     if (["str", "int", "float", "bool", "UUID"].includes(typeName)) continue;
 

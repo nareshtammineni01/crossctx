@@ -10,11 +10,7 @@ import type {
   ServiceUrlHint,
   DetectedLanguage,
 } from "../types/index.js";
-import {
-  scanProtoFiles,
-  grpcServicesToEndpoints,
-  extractGrpcOutboundCalls,
-} from "./grpc.js";
+import { scanProtoFiles, grpcServicesToEndpoints, extractGrpcOutboundCalls } from "./grpc.js";
 
 const IGNORE = ["**/vendor/**", "**/.git/**", "**/*_test.go", "**/testdata/**", "**/*.pb.go"];
 

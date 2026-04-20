@@ -79,7 +79,10 @@ function collectImports(
  * Call this after all per-language parsers have run.
  */
 export function detectSharedLibrariesFromContents(
-  serviceContents: Map<string, { serviceName: string; language: string; files: Map<string, string> }>,
+  serviceContents: Map<
+    string,
+    { serviceName: string; language: string; files: Map<string, string> }
+  >,
 ): SharedLibrary[] {
   const importMap = new Map<
     string,
@@ -201,18 +204,67 @@ function extractCsImports(content: string): string[] {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EXTERNAL_PREFIXES_TS = new Set([
-  "react", "next", "express", "fastify", "axios", "lodash", "moment", "dayjs",
-  "uuid", "zod", "class-validator", "typeorm", "prisma", "mongoose", "redis",
-  "kafkajs", "amqplib", "commander", "chalk", "dotenv", "jest", "vitest",
+  "react",
+  "next",
+  "express",
+  "fastify",
+  "axios",
+  "lodash",
+  "moment",
+  "dayjs",
+  "uuid",
+  "zod",
+  "class-validator",
+  "typeorm",
+  "prisma",
+  "mongoose",
+  "redis",
+  "kafkajs",
+  "amqplib",
+  "commander",
+  "chalk",
+  "dotenv",
+  "jest",
+  "vitest",
   "node:", // node: protocol built-ins
 ]);
 
 const EXTERNAL_PREFIXES_PY = new Set([
-  "fastapi", "pydantic", "sqlalchemy", "django", "flask", "requests", "httpx",
-  "aiohttp", "celery", "redis", "kafka", "boto3", "botocore", "pytest",
-  "uvicorn", "gunicorn", "starlette", "alembic", "motor", "pymongo",
-  "os", "sys", "typing", "pathlib", "json", "datetime", "collections", "abc",
-  "asyncio", "functools", "itertools", "re", "math", "enum", "dataclasses",
+  "fastapi",
+  "pydantic",
+  "sqlalchemy",
+  "django",
+  "flask",
+  "requests",
+  "httpx",
+  "aiohttp",
+  "celery",
+  "redis",
+  "kafka",
+  "boto3",
+  "botocore",
+  "pytest",
+  "uvicorn",
+  "gunicorn",
+  "starlette",
+  "alembic",
+  "motor",
+  "pymongo",
+  "os",
+  "sys",
+  "typing",
+  "pathlib",
+  "json",
+  "datetime",
+  "collections",
+  "abc",
+  "asyncio",
+  "functools",
+  "itertools",
+  "re",
+  "math",
+  "enum",
+  "dataclasses",
 ]);
 
 function isInternalImport(importPath: string, language: string): boolean {
@@ -223,7 +275,9 @@ function isInternalImport(importPath: string, language: string): boolean {
       // @scope/package — internal if not a well-known external package
       if (importPath.startsWith("@")) {
         const scope = importPath.split("/")[0].slice(1);
-        return !["nestjs", "angular", "babel", "types", "testing-library", "storybook"].includes(scope);
+        return !["nestjs", "angular", "babel", "types", "testing-library", "storybook"].includes(
+          scope,
+        );
       }
       // Bare module — check if it looks external
       const base = importPath.split("/")[0];
@@ -238,7 +292,13 @@ function isInternalImport(importPath: string, language: string): boolean {
     }
     case "go": {
       // External packages from well-known repos
-      const externalPrefixes = ["github.com/gin-gonic", "github.com/go-chi", "golang.org", "google.golang.org", "gopkg.in"];
+      const externalPrefixes = [
+        "github.com/gin-gonic",
+        "github.com/go-chi",
+        "golang.org",
+        "google.golang.org",
+        "gopkg.in",
+      ];
       for (const p of externalPrefixes) {
         if (importPath.startsWith(p)) return false;
       }
@@ -247,12 +307,27 @@ function isInternalImport(importPath: string, language: string): boolean {
     }
     case "java": {
       // Exclude JDK and well-known libraries
-      const external = ["java.", "javax.", "org.springframework", "org.apache", "com.fasterxml", "io.", "org.slf4j"];
+      const external = [
+        "java.",
+        "javax.",
+        "org.springframework",
+        "org.apache",
+        "com.fasterxml",
+        "io.",
+        "org.slf4j",
+      ];
       return !external.some((p) => importPath.startsWith(p));
     }
     case "csharp": {
       // Microsoft and System namespaces are external
-      const external = ["System", "Microsoft", "Newtonsoft", "Serilog", "MassTransit", "AutoMapper"];
+      const external = [
+        "System",
+        "Microsoft",
+        "Newtonsoft",
+        "Serilog",
+        "MassTransit",
+        "AutoMapper",
+      ];
       return !external.some((p) => importPath.startsWith(p));
     }
     default:
