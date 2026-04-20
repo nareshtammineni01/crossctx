@@ -8,6 +8,37 @@
 // ─────────────────────────────────────────────
 
 export type SupportedLanguage = "typescript" | "java" | "csharp" | "python" | "go" | "unknown";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DB USAGE (v0.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A database table, collection, or index referenced by a service */
+export interface DbUsage {
+  /** Table / collection / index name */
+  name: string;
+  /** Database technology inferred from context */
+  dbType: "sql" | "mongodb" | "redis" | "dynamodb" | "elasticsearch" | "unknown";
+  /** How the reference was detected */
+  accessPattern: "orm-model" | "raw-query" | "collection" | "cache-key" | "inferred";
+  sourceFile: string;
+  line?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED LIBRARIES (v0.3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** An internal package/module shared across service boundaries */
+export interface SharedLibrary {
+  /** Import path / module name as it appears in source */
+  importPath: string;
+  /** Normalized library name */
+  name: string;
+  /** Services that import this library */
+  usedByServices: string[];
+  sourceFile: string;
+}
 export type SupportedFramework =
   | "nestjs"
   | "express"
@@ -181,6 +212,8 @@ export interface CodeScanResult {
   specFile?: string;
   /** Service-wide message events (e.g. global publishers/subscribers) */
   messageEvents?: MessageEvent[];
+  /** Database tables/collections used by this service (v0.3) */
+  dbUsage?: DbUsage[];
 }
 
 export interface ServiceUrlHint {
@@ -240,10 +273,12 @@ export interface CrossCtxOutput {
   services: Service[];
   endpoints: Endpoint[];
   dependencies: Dependency[];
-  /** NEW: full code-scan results per project */
+  /** Full code-scan results per project */
   codeScanResults?: CodeScanResult[];
-  /** NEW: computed call chains */
+  /** Computed call chains */
   callChains?: CallChain[];
+  /** Shared internal libraries crossing service boundaries (v0.3) */
+  sharedLibraries?: SharedLibrary[];
 }
 
 /** Internal: result of scanning for OpenAPI files */

@@ -21,6 +21,14 @@ import { parsePythonProject } from "../parsers/python.js";
 import { parseGoProject } from "../parsers/go.js";
 import { buildServiceRegistry, buildAllCallChains } from "../resolver/index.js";
 
+// v0.3: DB usage, shared libraries, monorepo discovery
+import { extractDbUsage, type DbLanguage } from "../parsers/db.js";
+import { detectSharedLibrariesFromContents } from "../parsers/shared-libs.js";
+import { discoverServiceRoots, deduplicateServiceRoots } from "../scanner/monorepo.js";
+import { scanGraphQLSchemas, graphqlOperationsToEndpoints } from "../parsers/graphql.js";
+import { readFile as readFileAsync } from "fs/promises";
+import fg from "fast-glob";
+
 // Diff / Breaking change detection
 import { diffOutputs } from "../differ/index.js";
 
@@ -42,11 +50,14 @@ async function runScan(
     openapiOnly: boolean;
     watch?: boolean;
     minConfidence?: number;
+    monorepo?: boolean;
   },
 ): Promise<CrossCtxOutput> {
   try {
     // ── Phase 1: Source code scanning ──────────────────────────────────────
     const codeScanResults: CodeScanResult[] = [];
+    // v0.3: collected per-service file contents for shared library detection
+    const serviceContents = new Map<string, { serviceName: string; language: string; files: Map<string, string> }>();
 
     if (!options.openapiOnly) {
       if (!options.quiet && !options.watch)
@@ -54,7 +65,23 @@ async function runScan(
       if (!options.quiet && options.watch)
         console.log("  [scan] Detecting languages and scanning source code...");
 
-      for (const projectPath of resolvedPaths) {
+      // Monorepo: expand each path to its discovered service roots
+      let effectivePaths = resolvedPaths;
+      if (options.monorepo) {
+        effectivePaths = [];
+        for (const rootPath of resolvedPaths) {
+          if (!options.quiet) console.log(`  → Discovering service roots under ${path.basename(rootPath)}...`);
+          const discovered = deduplicateServiceRoots(await discoverServiceRoots(rootPath));
+          if (!options.quiet) console.log(`    Found ${discovered.length} service(s)`);
+          effectivePaths.push(...discovered.map((d) => d.path));
+        }
+        if (effectivePaths.length === 0) {
+          if (!options.quiet) console.log("  ⚠️  No service roots discovered. Check your paths.\n");
+          effectivePaths = resolvedPaths;
+        }
+      }
+
+      for (const projectPath of effectivePaths) {
         // Make sure path exists and is a directory
         try {
           const entries = await readdir(projectPath);
@@ -133,7 +160,58 @@ async function runScan(
             };
           }
 
-          if (scanResult) codeScanResults.push(scanResult);
+          if (scanResult) {
+            // ── v0.3: GraphQL schema integration (any language) ──────────
+            try {
+              const gqlResult = await scanGraphQLSchemas(projectPath);
+              if (gqlResult.operations.length > 0) {
+                const gqlEndpoints = graphqlOperationsToEndpoints(gqlResult.operations, scanResult.serviceName);
+                scanResult.endpoints.push(...gqlEndpoints);
+                if (!options.quiet) {
+                  console.log(`    + ${gqlEndpoints.length} GraphQL operation(s) from schema`);
+                }
+              }
+            } catch { /* skip */ }
+
+            // ── v0.3: DB usage detection ──────────────────────────────────
+            if (scanResult.language.language !== "unknown") {
+              const dbLang = scanResult.language.language as DbLanguage;
+              const fileExts: Record<string, string> = {
+                typescript: "**/*.{ts,tsx,js,jsx}",
+                python: "**/*.py",
+                go: "**/*.go",
+                java: "**/*.java",
+                csharp: "**/*.{cs,csx}",
+              };
+              const pattern = fileExts[dbLang];
+              if (pattern) {
+                try {
+                  const dbFiles = await fg([pattern], {
+                    cwd: projectPath,
+                    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**", "**/vendor/**"],
+                    absolute: true,
+                    onlyFiles: true,
+                  });
+                  const dbFileContents = new Map<string, string>();
+                  for (const f of dbFiles.slice(0, 200)) {
+                    try {
+                      dbFileContents.set(f, await readFileAsync(f, "utf-8"));
+                    } catch { /* skip */ }
+                  }
+                  scanResult.dbUsage = extractDbUsage(dbFileContents, dbLang);
+
+                  // Collect for shared library detection
+                  serviceContents.set(projectPath, {
+                    serviceName: scanResult.serviceName,
+                    language: dbLang,
+                    files: dbFileContents,
+                  });
+                } catch { /* skip db scan */ }
+              }
+            }
+
+            codeScanResults.push(scanResult);
+          }
         } catch (err) {
           if (!options.quiet) {
             console.log(
@@ -234,6 +312,14 @@ async function runScan(
     output.codeScanResults = codeScanResults;
     output.callChains = filteredChains;
 
+    // ── v0.3: Shared library detection ─────────────────────────────────────
+    if (serviceContents.size >= 2) {
+      output.sharedLibraries = detectSharedLibrariesFromContents(serviceContents);
+      if (!options.quiet && output.sharedLibraries.length > 0) {
+        console.log(`  Found ${output.sharedLibraries.length} shared internal package(s)\n`);
+      }
+    }
+
     // JSON output
     const outputPath = path.resolve(options.output);
     await saveOutput(output, outputPath);
@@ -301,7 +387,7 @@ program
 program
   .name("crossctx")
   .description("Generate cross-service API dependency maps from source code + OpenAPI specs")
-  .version("0.2.2")
+  .version("0.3.0")
   .argument("[paths...]", "project directories to scan (one per microservice)")
   .option("-o, --output <file>", "output JSON file path")
   .option("-f, --format <format>", "output format: json, markdown, graph, or all (comma-separated)")
@@ -318,6 +404,11 @@ program
     "compare against a baseline JSON file and report breaking changes",
   )
   .option("--min-confidence <threshold>", "filter edges below this confidence threshold (0–1)")
+  .option(
+    "--monorepo",
+    "auto-discover service roots under each provided path (monorepo mode)",
+    false,
+  )
   .action(
     async (
       pathArgs: string[],
@@ -331,6 +422,7 @@ program
         watch: boolean;
         diff?: string;
         minConfidence?: string;
+        monorepo?: boolean;
       },
     ) => {
       try {
@@ -392,7 +484,7 @@ program
 
         const resolvedPaths = inputPaths.map((p) => path.resolve(p));
 
-        if (!options.quiet) console.log("\n  CrossCtx v0.2.2\n");
+        if (!options.quiet) console.log("\n  CrossCtx v0.3.0\n");
 
         // Run initial scan
         const currentOutput = await runScan(resolvedPaths, {
@@ -402,6 +494,7 @@ program
           openapiOnly: options.openapiOnly as boolean,
           watch: false,
           minConfidence,
+          monorepo: options.monorepo as boolean | undefined,
         });
 
         // Handle diff if baseline provided
@@ -460,6 +553,7 @@ program
                           openapiOnly: options.openapiOnly as boolean,
                           watch: true,
                           minConfidence,
+                          monorepo: options.monorepo as boolean | undefined,
                         });
                       } catch (err) {
                         if (!options.quiet) {

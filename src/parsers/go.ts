@@ -10,6 +10,11 @@ import type {
   ServiceUrlHint,
   DetectedLanguage,
 } from "../types/index.js";
+import {
+  scanProtoFiles,
+  grpcServicesToEndpoints,
+  extractGrpcOutboundCalls,
+} from "./grpc.js";
 
 const IGNORE = ["**/vendor/**", "**/.git/**", "**/*_test.go", "**/testdata/**", "**/*.pb.go"];
 
@@ -51,11 +56,39 @@ export async function parseGoProject(
   // Check for OpenAPI spec (optional)
   const specFile = await findOpenApiSpec(projectPath);
 
+  // ── gRPC: scan .proto files and detect client calls ──────────────────────
+  const protoResult = await scanProtoFiles(projectPath);
+  const grpcEndpoints = grpcServicesToEndpoints(protoResult.services, serviceName);
+
+  // Detect gRPC outbound calls in Go source files
+  for (const ep of endpoints) {
+    const fileContent = fileContents.get(ep.sourceFile);
+    if (!fileContent) continue;
+    const grpcCalls = extractGrpcOutboundCalls(fileContent, ep.sourceFile, "go");
+    ep.outboundCalls.push(...grpcCalls);
+  }
+
+  // Also add gRPC service URL hints from grpc.Dial targets
+  for (const [filePath, content] of fileContents) {
+    const dialRegex = /grpc\.(?:Dial|NewClient)\s*\(\s*["']([^"']+)["']/g;
+    let m: RegExpExecArray | null;
+    while ((m = dialRegex.exec(content)) !== null) {
+      const target = m[1];
+      if (!serviceUrlHints.find((h) => h.value === `grpc://${target}`)) {
+        serviceUrlHints.push({
+          key: `GRPC_TARGET_${target.replace(/[^A-Z0-9]/gi, "_").toUpperCase()}`,
+          value: `grpc://${target}`,
+          sourceFile: filePath,
+        });
+      }
+    }
+  }
+
   return {
     projectPath,
     language,
     serviceName,
-    endpoints,
+    endpoints: [...endpoints, ...grpcEndpoints],
     dtos: Array.from(dtoMap.values()),
     serviceUrlHints,
     hasOpenApiSpec: !!specFile,
@@ -728,7 +761,7 @@ function extractGoOutboundCalls(content: string, filePath: string): OutboundCall
         methodIndex: 1,
         urlIndex: 2,
       },
-      // client.Get("url"), client.Post("url", ...), etc.
+      // client.Get("url"), client.Post("url", ...), etc.  (net/http client)
       {
         regex:
           /client\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*(?:context\.Context.*?,\s*)?["']([^"']+)["']/gi,
@@ -743,6 +776,14 @@ function extractGoOutboundCalls(content: string, filePath: string): OutboundCall
         methodIndex: 1,
         urlIndex: 2,
       },
+      // http.NewRequestWithContext(ctx, "GET", "url", ...)
+      {
+        regex:
+          /http\.NewRequestWithContext\s*\(\s*\w+\s*,\s*["']([A-Z]+)["']\s*,\s*["']([^"']+)["']/gi,
+        pattern: "http.Request",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
       // Variable concatenation: serviceURL + "/api/orders"
       {
         regex:
@@ -750,6 +791,28 @@ function extractGoOutboundCalls(content: string, filePath: string): OutboundCall
         pattern: "http",
         methodIndex: 1,
         urlIndex: 2,
+      },
+      // go-resty: resty.New().R().SetBody(...).Post("url")  or  client.R().Get("url")
+      {
+        regex: /\.R\(\)(?:[^)]*\))?\.(Get|Post|Put|Delete|Patch|Head)\s*\(\s*["']([^"']+)["']/gi,
+        pattern: "resty",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+      // resty client with base URL: restyClient.R().Get("/path")
+      {
+        regex:
+          /(?:restyClient|restClient|\w+Client)\s*\.\s*R\s*\(\s*\)\s*\.(Get|Post|Put|Delete|Patch)\s*\(\s*["']([^"']+)["']/gi,
+        pattern: "resty",
+        methodIndex: 1,
+        urlIndex: 2,
+      },
+      // resty.New().SetHostURL("http://...") — capture base URL hint
+      {
+        regex: /resty\.New\s*\(\s*\)(?:[^)]*)?SetHostURL\s*\(\s*["']([^"']+)["']/gi,
+        pattern: "resty-base-url",
+        methodIndex: 0, // unused — method defaults to GET below
+        urlIndex: 1,
       },
     ];
 

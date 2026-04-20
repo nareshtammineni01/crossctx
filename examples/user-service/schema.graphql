@@ -1,0 +1,69 @@
+# User Service — GraphQL Schema
+# Exposed alongside the REST API for richer client queries
+
+type Query {
+  getUser(id: ID!): User
+  listUsers(page: Int, limit: Int): UserPage
+  searchUsers(query: String!): [User!]!
+  getUserProfile(id: ID!): UserProfile
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+  updateUser(id: ID!, input: UpdateUserInput!): User!
+  deleteUser(id: ID!): DeleteUserResponse!
+  updatePassword(id: ID!, input: UpdatePasswordInput!): Boolean!
+}
+
+type Subscription {
+  userUpdated(id: ID!): User!
+}
+
+type User {
+  id:        ID!
+  email:     String!
+  firstName: String!
+  lastName:  String!
+  role:      String!
+  createdAt: String!
+  updatedAt: String!
+  profile:   UserProfile
+}
+
+type UserProfile {
+  userId:    ID!
+  bio:       String
+  avatarUrl: String
+  phone:     String
+}
+
+type UserPage {
+  users:      [User!]!
+  totalCount: Int!
+  page:       Int!
+  pageSize:   Int!
+}
+
+input CreateUserInput {
+  email:     String!
+  firstName: String!
+  lastName:  String!
+  password:  String!
+  role:      String
+}
+
+input UpdateUserInput {
+  firstName: String
+  lastName:  String
+  role:      String
+}
+
+input UpdatePasswordInput {
+  currentPassword: String!
+  newPassword:     String!
+}
+
+type DeleteUserResponse {
+  success: Boolean!
+  message: String!
+}

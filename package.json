@@ -1,6 +1,6 @@
 {
   "name": "crossctx",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Scan microservice source code and generate cross-service API dependency maps, interactive graphs, and LLM-ready context — no config required",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

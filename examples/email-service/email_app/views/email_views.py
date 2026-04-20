@@ -1,5 +1,7 @@
 import os
 import requests
+from shared_utils.auth import verify_jwt_token
+from shared_utils.logging import get_logger
 from rest_framework.views import APIView
 from rest_framework.viewsets import ViewSet
 from rest_framework.response import Response

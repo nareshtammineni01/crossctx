@@ -263,18 +263,41 @@ function extractFastAPIRequestBody(
   let match: RegExpExecArray | null;
 
   while ((match = paramRegex.exec(params)) !== null) {
-    const [, , typeName] = match;
+    const [, paramName, typeName] = match;
 
     // Skip FastAPI built-in types and path/query params
-    if (["Request", "Response", "BackgroundTasks", "Depends", "Query"].includes(typeName)) continue;
+    if (["Request", "Response", "BackgroundTasks", "Query", "Header", "Cookie", "File", "Form"].includes(typeName)) continue;
     // Path params are usually lowercase primitives
     if (["str", "int", "float", "bool", "UUID"].includes(typeName)) continue;
+
+    // Handle FastAPI dependency injection: param: ServiceType = Depends(get_service)
+    // — skip Depends-injected params as they are not request bodies
+    const paramSectionRegex = new RegExp(
+      `${paramName}\\s*:\\s*${typeName}[^,)]*=\\s*Depends\\s*\\(`,
+    );
+    if (paramSectionRegex.test(params)) continue;
 
     if (dtoMap.has(typeName)) return dtoMap.get(typeName)!;
     return { typeName, fields: [], source: "dto-class" };
   }
 
   return undefined;
+}
+
+/**
+ * Collect FastAPI dependency injection service types.
+ * Recognises: param: ServiceClass = Depends(get_service_func)
+ * Returns all injected class names so callers can skip them from body detection.
+ */
+export function extractFastAPIDependencies(params: string): string[] {
+  const deps: string[] = [];
+  // Match: param_name: TypeName = Depends(...)
+  const depRegex = /(\w+)\s*:\s*([A-Z]\w+)[^,)]*=\s*Depends\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = depRegex.exec(params)) !== null) {
+    deps.push(m[2]);
+  }
+  return deps;
 }
 
 function extractReturnTypeAnnotation(
@@ -659,6 +682,27 @@ function extractPythonOutboundCalls(content: string, filePath: string): Outbound
       pattern: "httpx-async",
       methodGroup: 1,
       urlGroup: 2,
+    },
+    // async with httpx.AsyncClient() as client: await client.get(...)
+    // await client.get(url) / await client.post(url, json=...)
+    {
+      regex:
+        /await\s+(?:client|self\.\w*client\w*|http_client|async_client)\.(get|post|put|delete|patch)\s*\(\s*f?["']([^"'`\n]+)["'`]/g,
+      pattern: "httpx-await",
+      methodGroup: 1,
+      urlGroup: 2,
+    },
+    // httpx.AsyncClient(base_url="http://...") — capture base URL
+    {
+      regex: /httpx\.AsyncClient\s*\(\s*base_url\s*=\s*f?["']([^"'\n]+)["']/g,
+      pattern: "httpx-base-url",
+      urlGroup: 1,
+    },
+    // httpx.Client(base_url="http://...")
+    {
+      regex: /httpx\.Client\s*\(\s*base_url\s*=\s*f?["']([^"'\n]+)["']/g,
+      pattern: "httpx-client-base-url",
+      urlGroup: 1,
     },
     // urllib.request.urlopen("url")
     {

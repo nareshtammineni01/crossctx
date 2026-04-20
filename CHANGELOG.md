@@ -8,10 +8,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Planned
-- GraphQL and gRPC detection
 - Payload extractor enrichment (cross-file DTO resolution, confidence scoring)
 - HTML report polish (depth visualization, language color bands, PNG/SVG export)
-- Go and Ruby parser support
+- Formal JSON schema versioning
+
+---
+
+## [0.3.0] - 2026-04-19
+
+Accuracy + coverage release. gRPC, GraphQL, DB ownership, shared libraries, monorepo discovery, improved Python/Go parsers.
+
+### Added
+
+**gRPC support (`src/parsers/grpc.ts`)**
+- Parses `.proto` files — extracts service definitions, RPC methods, and message types
+- gRPC endpoints represented as `GRPC /package.ServiceName/MethodName` in the dependency map
+- Outbound gRPC call detection for all languages:
+  - Go: `grpc.Dial` / `grpc.NewClient` + stub method calls
+  - TypeScript: `getService<T>()`, `@grpc/grpc-js` client constructors
+  - Python: `grpc.insecure_channel` / `grpc.secure_channel` + `_pb2_grpc.XxxStub`
+  - Java: `ManagedChannelBuilder.forAddress/forTarget` + `XxxGrpc.newBlockingStub`
+  - C#: `GrpcChannel.ForAddress` + `new XxxService.XxxClient`
+
+**GraphQL support (`src/parsers/graphql.ts`)**
+- Parses `.graphql` / `.gql` schema files — extracts Query, Mutation, and Subscription operations
+- Also detects `gql\`...\`` template literals in TypeScript/JS files
+- GraphQL operations represented as `GRAPHQL_QUERY /graphql/operationName` endpoints
+- Outbound GraphQL call detection:
+  - TypeScript: Apollo Client (`client.query`, `client.mutate`), `graphql-request`, urql
+  - Python: `gql` library, `requests.post` to a `/graphql` endpoint
+  - Go: `machinebox/graphql` `graphql.NewClient`, `genqlient`
+  - Java: Spring GraphQL `HttpGraphQlClient.builder`
+
+**DB usage detection (`src/parsers/db.ts`)**
+- Detects which tables, collections, and cache namespaces each service owns/uses
+- SQL: TypeORM `@Entity`, Prisma `model`, Sequelize `define`, knex, raw SQL (`SELECT FROM`, `INSERT INTO`, `UPDATE`, `DELETE FROM`)
+- MongoDB: Mongoose `mongoose.model`, `db.collection`, `motor`/`pymongo` dict-access, Spring `@Document`
+- Redis: key-prefix patterns across all languages
+- DynamoDB: `TableName` key in AWS SDK calls across all languages
+- Elasticsearch: `index` key in client calls
+- Results available as `dbUsage` on each `CodeScanResult`
+
+**Shared internal library detection (`src/parsers/shared-libs.ts`)**
+- Scans imports across all scanned services and flags packages used by 2+ services
+- Covers TypeScript workspace packages (`@myorg/...`), Go sub-packages, Python project imports, Java groupId packages, C# namespace references
+- Smart external-package exclusion lists per language (won't flag `react`, `axios`, `sqlalchemy`, etc.)
+- Results available as `sharedLibraries` on `CrossCtxOutput`
+
+**Monorepo layout support (`src/scanner/monorepo.ts`)**
+- `--monorepo` flag: given a root directory, auto-discovers service sub-directories
+- Detects service roots by looking for language marker files (`package.json`, `go.mod`, `pom.xml`, `*.csproj`, `requirements.txt`, etc.) up to 3 levels deep
+- Skips non-service directories: `node_modules`, `vendor`, `dist`, `.git`, `__pycache__`, etc.
+- Smart workspace-root exclusion: monorepo `package.json` with `"workspaces"` is not treated as a service
+- Deduplication: avoids registering both a parent and child directory as separate services
+
+### Improved
+
+**Python parser (`src/parsers/python.ts`)**
+- FastAPI dependency injection: `Depends(...)` parameters are now correctly excluded from request body detection
+- `httpx` async client coverage: `await client.get(...)`, `await client.post(...)`, `httpx.AsyncClient(base_url=...)`, `httpx.Client(base_url=...)`
+
+**Go parser (`src/parsers/go.ts`)**
+- `go-resty` support: `.R().Get(url)`, `.R().Post(url)`, named resty client chains
+- `http.NewRequestWithContext` detection
+- `grpc.Dial` / `grpc.NewClient` targets added as `serviceUrlHints` for resolver pickup
+- gRPC stub call detection integrated inline
+
+### Changed
+- `CrossCtxOutput` now includes optional `sharedLibraries: SharedLibrary[]`
+- `CodeScanResult` now includes optional `dbUsage: DbUsage[]`
+- New types: `DbUsage`, `SharedLibrary` in `src/types/index.ts`
 
 ---
 

@@ -44,18 +44,18 @@ Focus: make the tool easier to adopt and contribute to.
 
 ---
 
-## v0.3 — Accuracy + Coverage
+## v0.3 — Accuracy + Coverage ✅ Complete
 
 Focus: make the resolver smarter and cover more real-world patterns.
 
-- [ ] gRPC support — parse `.proto` files and detect service calls
-- [ ] GraphQL support — parse schema files and detect queries/mutations
-- [ ] Improve Python parser: FastAPI dependency injection, `httpx` async client
-- [ ] Improve Go parser: `net/http` standard library, `go-resty`, `grpc-go`
-- [ ] AST-based parsing mode (opt-in via flag) for higher accuracy on complex code
-- [ ] Detect DB usage patterns — which service owns which table/collection
-- [ ] Detect shared libraries / internal packages that cross service boundaries
-- [ ] Support monorepo layouts (auto-discover service roots from a root directory)
+- [x] gRPC support — parse `.proto` files and detect service calls
+- [x] GraphQL support — parse schema files and detect queries/mutations
+- [x] Improve Python parser: FastAPI dependency injection, `httpx` async client
+- [x] Improve Go parser: `net/http` standard library, `go-resty`, `grpc-go`
+- [x] AST-based parsing mode (opt-in via `--ast` flag) for higher accuracy on complex code
+- [x] Detect DB usage patterns — which service owns which table/collection
+- [x] Detect shared libraries / internal packages that cross service boundaries
+- [x] Support monorepo layouts (auto-discover service roots from a root directory)
 
 ---
 
