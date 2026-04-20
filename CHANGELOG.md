@@ -10,6 +10,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Planned
 - Payload extractor enrichment (cross-file DTO resolution, confidence scoring)
 - HTML report polish (depth visualization, language color bands, PNG/SVG export)
+- PR impact analysis GitHub Action
+- VS Code extension
+- Watch mode insights
+
+---
+
+## [2.1.0] - 2026-04-20
+
+Bug fix and polish release — lint clean, stable v2.0 CLI.
+
+### Fixed
+- Removed unused `fileConfig` variable assignment in the root shorthand command action (`src/bin/cli.ts`) — resolved `@typescript-eslint/no-unused-vars` lint error. `loadConfig()` is still called so config is still loaded; the return value is no longer captured since `runScan` reads it internally.
+
+### Changed
+- Version bumped to `2.1.0` in `package.json` and `src/bin/cli.ts`
+
+---
+
+## [2.0.0] - 2026-04-19
+
+Major release — "Static Architecture Intelligence" repositioning. New `scan`-first CLI, architecture insights layer, viral `blame` feature, and complete README rewrite.
+
+### Added
+
+**Redesigned CLI entry point**
+- `crossctx scan [paths...]` is now the primary command — prints a plain-English "hook summary" after every scan: services detected, endpoints mapped, cross-service calls found, top dependency pairs, and high fan-out warnings
+- `crossctx <paths...>` shorthand still works as an alias for `scan`
+- All subcommands accept `--input <file>` to reuse a previous JSON scan without rescanning
+
+**Architecture insights layer (`src/analyzer/insights.ts`)**
+- `crossctx insights [paths...]` — post-scan analysis pass surfacing: circular dependencies (DFS), high fan-out services (≥3 outbound deps), high fan-in "hot" services (≥4 inbound deps), unresolved outbound calls, tight coupling between service pairs (≥40% of all call edges), isolated services
+- Exits with code 1 when critical issues (circular dependencies) are found — CI-compatible
+- Severity levels: `error` (circular deps), `warning` (fan-out, fan-in, tight coupling), `info` (unresolved, isolated)
+
+**`crossctx blame <ServiceName>` / `crossctx impact <ServiceName>`**
+- BFS blast radius analysis: lists direct callers and transitively affected services with sample call sites
+- `impact` is an alias for `blame`
+
+**`crossctx explain <endpoint>`**
+- Builds a clipboard-ready LLM context block for the matched endpoint — includes call chain, request/response schema, services involved
+- Auto-copies to clipboard via `pbcopy` (macOS), `xclip`/`xdg-clipboard` (Linux), `clip.exe` (Windows)
+
+**`crossctx trace <endpoint>`**
+- ASCII call-chain tree visualizer — shows every hop from an endpoint through downstream services
+
+**`crossctx graph` and `crossctx export` subcommands**
+- `crossctx graph [paths...]` — generates the interactive HTML graph; accepts `--input` to skip rescanning
+- `crossctx export [paths...]` — saves JSON / Markdown with `--format json|markdown|all`
+
+### Changed
+- Version bumped to `2.0.0`
+- README completely rewritten: new positioning ("Find hidden service dependencies instantly"), new hook output sample, all subcommands documented with example output, "Real Use Cases" section, updated language/protocol support table
 
 ---
 

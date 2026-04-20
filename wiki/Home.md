@@ -1,9 +1,9 @@
 # CrossCtx Wiki
 
-> **AI-powered cross-service dependency mapping for microservices**
-> `npm install -g crossctx` · Open Source · MIT License
+> **Find hidden service dependencies instantly.**
+> `npm install -g crossctx` · Open Source · MIT License · v2.1.0
 
-CrossCtx scans your microservice source code — no OpenAPI spec required, no config, no agents — and generates an interactive dependency graph, structured JSON output, and a Markdown context block you can paste directly into any LLM.
+CrossCtx scans your microservice source code — no OpenAPI spec required, no config, no agents running in your cluster — and generates an interactive dependency graph, architecture insights, blast-radius analysis, and LLM-ready context blocks.
 
 ---
 
@@ -32,39 +32,48 @@ CrossCtx scans your microservice source code — no OpenAPI spec required, no co
 npm install -g crossctx
 
 # Or run without installing
-npx crossctx ./user-service ./order-service ./payment-service --graph
+npx crossctx scan ./user-service ./order-service ./payment-service
 ```
 
-You get three output files with no configuration:
+```
+  🔍 CrossCtx Results
+  ─────────────────────────────────────────────
 
-- `crossctx-output.json` — full structured data, LLM-optimized
-- `crossctx-output.md` — human-readable summary
-- `crossctx-graph.html` — interactive force-directed graph (open in any browser)
+  ✔ 3 services detected
+  ✔ 22 endpoints mapped
+  ✔ 8 cross-service calls found
+
+  Top dependencies:
+    - order-service → payment-service
+    - order-service → user-service
+
+  ⚠️  High fan-out:
+    - order-service calls 3 services
+
+  Next steps:
+    crossctx graph        # open interactive dependency graph
+    crossctx insights     # full architecture analysis
+    crossctx blame <svc>  # impact analysis for a service
+    crossctx export       # save JSON / Markdown
+```
 
 ---
 
 ## At a Glance
 
-```
-$ crossctx ./user-service ./order-service ./inventory-service --graph
-
-CrossCtx v0.2.0
-
-[1/4] Detecting languages and scanning source code...
-→ user-service (typescript/nestjs, confidence: 98%)
-→ order-service (java/spring-boot, confidence: 97%)
-→ inventory-service (python/fastapi, confidence: 95%)
-Found 3 service(s), 28 endpoint(s)
-
-[2/4] Scanning for OpenAPI/Swagger specs... Found 1 spec(s)
-[3/4] Resolving call chains... Found 6 call chain(s)
-[4/4] Building output...
-
-Graph saved to: crossctx-graph.html
-```
+| Command | What it does |
+|---------|-------------|
+| `crossctx scan` | Detect services, map endpoints, show plain-English summary |
+| `crossctx graph` | Generate interactive HTML dependency graph |
+| `crossctx insights` | Architecture analysis — circular deps, fan-out, hot services |
+| `crossctx blame <svc>` | Blast radius: what breaks if this service goes down |
+| `crossctx explain <endpoint>` | Clipboard-ready LLM context block for any endpoint |
+| `crossctx trace <endpoint>` | ASCII call-chain tree |
+| `crossctx export` | Save JSON / Markdown output files |
+| `crossctx diff` | Compare two scans for breaking changes (CI-compatible) |
 
 ---
 
 ## License
 
-MIT · [GitHub Repository](https://github.com/your-org/crossctx)
+MIT · [GitHub Repository](https://github.com/nareshtammineni01/crossctx)

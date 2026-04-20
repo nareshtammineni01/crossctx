@@ -43,7 +43,7 @@ import { computeInsights, formatInsights } from "../analyzer/insights.js";
 
 import type { ParsedSpec, CodeScanResult, CrossCtxOutput } from "../types/index.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 
 const program = new Command();
 
@@ -1241,7 +1241,7 @@ program
   .action(async (pathArgs: string[]) => {
     if (pathArgs.length > 0) {
       // Delegate to scan with these paths
-      const fileConfig = await loadConfig();
+      await loadConfig();
       const resolvedPaths = pathArgs.map((p) => path.resolve(p));
       console.log(`\n  CrossCtx v${VERSION}\n`);
       const output = await runScan(resolvedPaths, {

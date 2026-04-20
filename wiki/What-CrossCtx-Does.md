@@ -47,37 +47,47 @@ The output is a set of **call chains** — full dependency trees with confidence
 
 ### Phase 4 — Render
 
-Three output formats are generated from the resolved data:
+Multiple outputs are available via dedicated subcommands:
 
-| Format | Flag | File |
-|--------|------|------|
-| JSON | (always) | `crossctx-output.json` |
-| Markdown | `--markdown` | `crossctx-output.md` |
-| HTML graph | `--graph` | `crossctx-graph.html` |
+| Command | Output |
+|---------|--------|
+| `crossctx scan` | Hook summary to terminal + `crossctx-output.json` |
+| `crossctx graph` | `crossctx-graph.html` — interactive Cytoscape.js graph |
+| `crossctx export --format markdown` | `crossctx-output.md` |
+| `crossctx export --format all` | JSON + Markdown |
+| `crossctx insights` | Architecture warnings to terminal |
+| `crossctx blame <svc>` | Blast radius to terminal |
+| `crossctx explain <endpoint>` | LLM context block to clipboard |
 
 ---
 
 ## Example Run
 
 ```bash
-crossctx ./user-service ./order-service ./inventory-service ./notification-service --graph
+crossctx scan ./user-service ./order-service ./inventory-service ./notification-service
 ```
 
 ```
-CrossCtx v0.2.0
+  🔍 CrossCtx Results
+  ─────────────────────────────────────────────
 
-[1/4] Detecting languages and scanning source code...
-→ user-service (typescript/nestjs, confidence: 98%)
-→ order-service (java/spring-boot, confidence: 97%)
-→ inventory-service (python/fastapi, confidence: 95%)
-→ notification-service (typescript/express, confidence: 92%)
-Found 4 service(s), 36 endpoint(s)
+  ✔ 4 services detected
+  ✔ 36 endpoints mapped
+  ✔ 11 cross-service calls found
 
-[2/4] Scanning for OpenAPI/Swagger specs... Found 2 spec(s)
-[3/4] Resolving call chains... Found 11 call chain(s)
-[4/4] Building output...
+  Top dependencies:
+    - order-service → user-service
+    - order-service → inventory-service
+    - notification-service → user-service
 
-Graph saved to: crossctx-graph.html
+  ⚠️  High fan-out:
+    - order-service calls 4 services
+
+  Next steps:
+    crossctx graph        # open interactive dependency graph
+    crossctx insights     # full architecture analysis
+    crossctx blame <svc>  # impact analysis for a service
+    crossctx export       # save JSON / Markdown
 ```
 
 ---

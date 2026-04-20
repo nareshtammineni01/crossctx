@@ -35,40 +35,45 @@ npx downloads and runs CrossCtx on demand — useful for CI pipelines or trying 
 Point CrossCtx at one or more service directories:
 
 ```bash
-crossctx ./user-service ./order-service ./payment-service
+crossctx scan ./user-service ./order-service ./payment-service
 ```
 
 You'll see output like:
 
 ```
-CrossCtx v0.2.0
+  🔍 CrossCtx Results
+  ─────────────────────────────────────────────
 
-[1/4] Detecting languages and scanning source code...
-→ user-service (typescript/nestjs, confidence: 98%)
-→ order-service (java/spring-boot, confidence: 97%)
-→ payment-service (csharp/aspnet, confidence: 97%)
-Found 3 service(s), 22 endpoint(s)
+  ✔ 3 services detected
+  ✔ 22 endpoints mapped
+  ✔ 8 cross-service calls found
 
-[2/4] Scanning for OpenAPI/Swagger specs... Found 1 spec(s)
-[3/4] Resolving call chains... Found 5 call chain(s)
-[4/4] Building output...
+  Top dependencies:
+    - order-service → payment-service
+    - order-service → user-service
 
-JSON output: crossctx-output.json
+  ⚠️  High fan-out:
+    - order-service calls 3 services
+
+  Next steps:
+    crossctx graph        # open interactive dependency graph
+    crossctx insights     # full architecture analysis
+    crossctx blame <svc>  # impact analysis for a service
+    crossctx export       # save JSON / Markdown
 ```
 
-Two files are created in your current working directory:
-- `crossctx-output.json` — full structured output
-- `crossctx-output.md` — human-readable summary (if `--markdown` was passed)
+One file is written by default:
+- `crossctx-output.json` — full structured output, LLM-optimized
 
 ---
 
 ## Generate the Interactive Graph
 
 ```bash
-crossctx ./user-service ./order-service ./payment-service --graph
+crossctx graph ./user-service ./order-service ./payment-service
 ```
 
-This adds:
+This creates:
 - `crossctx-graph.html` — open in any browser
 
 ```bash
@@ -77,51 +82,53 @@ xdg-open crossctx-graph.html # Linux
 start crossctx-graph.html    # Windows
 ```
 
----
-
-## Generate All Outputs at Once
+Or reuse a previous scan result to skip rescanning:
 
 ```bash
-crossctx ./user-service ./order-service ./payment-service --markdown --graph
+crossctx graph --input crossctx-output.json
+```
+
+---
+
+## Save JSON / Markdown Output
+
+```bash
+crossctx export --format all   # JSON + Markdown
+crossctx export --format json
+crossctx export --format markdown
 ```
 
 ---
 
 ## Try It with the Example Services
 
-The repo ships with seven example microservices covering all supported languages:
+The repo ships with eight example microservices covering all supported languages:
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-org/crossctx.git
-cd crossctx
+git clone https://github.com/nareshtammineni01/crossctx.git
+cd crossctx/examples
 
 # Install and build
 npm install && npm run build
 
-# Run against the examples
-node dist/bin/cli.js \
-  examples/order-service \
-  examples/payment-service \
-  examples/user-service \
-  examples/inventory-service \
-  examples/notification-service \
-  examples/analytics-service \
-  examples/email-service \
-  --graph
-
-open crossctx-graph.html
+# Run scan (paths are in .crossctxrc.json — no args needed)
+crossctx scan
+crossctx graph
+crossctx insights
+crossctx blame analytics-service
 ```
 
 | Example Service | Language | Framework |
 |----------------|----------|-----------|
-| `order-service` | — | OpenAPI spec only |
-| `payment-service` | — | OpenAPI spec only |
-| `user-service` | — | OpenAPI spec only |
+| `order-service` | TypeScript | NestJS |
+| `payment-service` | TypeScript | NestJS |
+| `user-service` | TypeScript | NestJS |
 | `inventory-service` | Java | Spring Boot |
-| `notification-service` | C# | ASP.NET Core |
+| `notification-service` | Python | FastAPI |
 | `analytics-service` | Python | FastAPI |
-| `email-service` | Python | Django REST |
+| `email-service` | Go | Gin |
+| `go-order-service` | Go | Gin |
 
 ---
 
@@ -154,34 +161,43 @@ See [[Interactive Dependency Graph]] for the full guide.
 ### Before making a breaking change
 
 ```bash
-# Generate a baseline before your change
-crossctx ./services -o baseline.json
+# Save baseline before your change
+crossctx scan ./services --output baseline.json
 
 # Make your change...
 
-# Check for breaking changes after
-crossctx ./services --diff baseline.json
+# Detect breaking changes
+crossctx diff baseline.json crossctx-output.json
 ```
 
-### Feeding context to an LLM
+### Architecture health check
 
 ```bash
-crossctx ./services --markdown
-# Paste crossctx-output.md into Claude, ChatGPT, etc.
+crossctx insights ./services
+# Exits 1 if circular dependencies found — great for CI
 ```
 
-### Watching for changes
+### Blast radius analysis
 
 ```bash
-crossctx ./services --watch --graph
-# Re-scans automatically when source files change
+crossctx blame PaymentService
+# Shows what breaks if PaymentService goes down
+```
+
+### Feed context to an LLM
+
+```bash
+crossctx explain /api/orders
+# Copies clipboard-ready context block to your clipboard
 ```
 
 ### CI pipeline (fail on breaking changes)
 
 ```yaml
 # GitHub Actions example
-- run: npx crossctx ./services --diff baseline.json
+- run: |
+    crossctx scan ./services --output current.json
+    crossctx diff baseline.json current.json
 ```
 
 ---

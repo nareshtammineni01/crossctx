@@ -6,89 +6,66 @@ This page tracks what's shipped, what's actively in progress, and where CrossCtx
 
 ## v0.1 — Foundation ✅ Released
 
-The working MVP. Proves the concept end-to-end.
+- OpenAPI / Swagger spec scanning, multi-repo scanning, JSON + Markdown + HTML graph output, source code parsing for TypeScript/Java/C#/Python/Go, 5-strategy call-chain resolver, `--diff`, `--watch`
 
-- OpenAPI / Swagger spec scanning (JSON + YAML, OpenAPI 3.x + Swagger 2.x)
-- Multi-repo scanning — pass multiple service directories in one command
-- JSON output — token-efficient, LLM-friendly
-- Markdown output (`--markdown`)
-- Interactive HTML dependency graph (`--graph`)
-- TypeScript / NestJS / Express source code parsing
-- Java / Spring Boot source code parsing (RestTemplate, FeignClient)
-- C# / ASP.NET source code parsing (IHttpClientFactory)
-- Python / FastAPI / Django / Flask source code parsing
-- Go / Gin / Chi source code parsing
-- Message queue detection: Kafka, RabbitMQ, SQS, Redis pub/sub, NATS
-- Cross-service call chain resolution (5-strategy resolver with confidence scoring)
-- Breaking change detection (`--diff`)
-- Watch mode (`--watch`) — auto-rescan on file changes
-- GitHub Actions CI
-- MIT License
+## v0.2 — Developer Experience ✅ Released
+
+- Graph toolbar (confidence slider, service filter chips), `--format` flag, `crossctx init`, config file support, improved Java/C# DTO extraction, `--min-confidence`, examples directory
+
+## v0.3 — Accuracy + Coverage ✅ Released
+
+- gRPC and GraphQL support, improved Python/Go parsers, DB usage detection, shared library detection, monorepo discovery (`--monorepo`)
+
+## v1.0 — Production Ready ✅ Released
+
+- Stable JSON schema (`meta.schemaVersion`), plugin interface, `crossctx diff` subcommand, Docker image, full test suite, performance benchmarks
 
 ---
 
-## v0.2 — Developer Experience 🚧 In Progress
+## v2.0 — Static Architecture Intelligence ✅ Released
 
-Focus: make the tool easier to adopt and contribute to.
+Major relaunch. New CLI, new category.
 
-- [ ] Improve graph UI — zoom, search, filter by service, toggle confidence threshold
-- [ ] `--format` flag: `json | markdown | graph | all` — simplify the current flag set
-- [ ] Better error messages when a project path doesn't match any known language
-- [ ] `crossctx init` — scaffold a `.crossctxrc.json` config file
-- [ ] Config file support — avoid repeating CLI flags on every run
-- [ ] Improve DTO/payload shape extraction accuracy for Java and C#
-- [ ] `--min-confidence` flag — filter low-confidence edges from output
-- [ ] Published examples directory with sample multi-service repos
-
----
-
-## v0.3 — Accuracy + Coverage
-
-Focus: smarter resolver, more real-world patterns.
-
-- [ ] gRPC support — parse `.proto` files and detect service calls
-- [ ] GraphQL support — parse schema files and detect queries/mutations
-- [ ] Improve Python parser: FastAPI dependency injection, `httpx` async client
-- [ ] Improve Go parser: `net/http` standard library, `go-resty`, `grpc-go`
-- [ ] AST-based parsing mode (opt-in) for higher accuracy on complex code
-- [ ] Detect DB usage patterns — which service owns which table/collection
-- [ ] Detect shared libraries / internal packages that cross service boundaries
-- [ ] Support monorepo layouts — auto-discover service roots from a root directory
+- `crossctx scan` as primary entry point with plain-English hook summary
+- Architecture insights layer — circular deps, high fan-out/fan-in, tight coupling, unresolved calls
+- `crossctx insights` — CI-compatible (exits 1 on critical issues)
+- `crossctx blame <ServiceName>` / `crossctx impact` — BFS blast radius analysis
+- `crossctx explain <endpoint>` — clipboard LLM context builder
+- `crossctx trace <endpoint>` — ASCII call-chain tree
+- `crossctx graph` and `crossctx export` as explicit subcommands
 
 ---
 
-## v1.0 — Production Ready
+## v2.1 — Bug Fixes ✅ Released
 
-Focus: reliability, completeness, and trust.
-
-- [ ] Stable JSON output schema with formal versioning and migration guides
-- [ ] 90%+ endpoint extraction accuracy benchmark across a public test suite
-- [ ] Full test coverage across all language parsers
-- [ ] Performance benchmarks published in README
-- [ ] Plugin / analyzer interface — community-addable language parsers without forking
-- [ ] `crossctx diff` subcommand with human-readable breaking change report
-- [ ] Docker image for CI use without Node.js install
-- [ ] Documentation site
+- Fixed `@typescript-eslint/no-unused-vars` lint error (`fileConfig` in root shorthand action)
+- Version bumped to `2.1.0`
 
 ---
 
-## v1.x and Beyond — AI Layer
+## v2.x — Next
 
-The long-term direction. The structured output CrossCtx produces is the foundation for LLM-powered features.
+- [ ] PR impact analysis GitHub Action
+- [ ] VS Code extension — inline annotations
+- [ ] Watch mode insights — auto re-run `insights` on file changes
+- [ ] Payload extractor enrichment — cross-file DTO resolution, confidence scoring
+- [ ] HTML graph polish — PNG/SVG export, depth visualization
 
-- **"Explain this codebase"** — feed `crossctx-output.json` to an LLM to generate onboarding docs
-- **"What breaks if I change this?"** — impact analysis from a specific endpoint or service
-- **"Where is this API called?"** — semantic search across all call chains
-- **PR impact analysis** — GitHub Action that comments "this PR affects 3 services and 2 APIs"
-- **Anomaly detection** — flag circular dependencies, unusually high fan-out, unresolved calls
-- **VS Code extension** — inline annotations showing which services call a given endpoint
+---
+
+## Long-Term — AI Layer
+
+- **"Explain this codebase"** — feed scan output to an LLM for onboarding docs
+- **"What breaks if I change this?"** — semantic impact analysis
+- **"Where is this API called?"** — semantic call-site search
+- **Anomaly detection** — flag unusual architecture patterns automatically
 
 ---
 
 ## How to Influence the Roadmap
 
 - **Vote** on existing issues with 👍
-- **Open a new issue** describing your use case — concrete examples are more actionable than abstract feature requests
+- **Open a new issue** describing your use case
 - **Submit a PR** — working code moves faster than discussion
 
 ---

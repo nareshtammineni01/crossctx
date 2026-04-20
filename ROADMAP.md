@@ -74,6 +74,40 @@ Focus: reliability, completeness, and trust.
 
 ---
 
+## v2.0 — Static Architecture Intelligence ✅ Released
+
+Major relaunch. New CLI design, new positioning, architecture insights layer.
+
+- [x] Redesigned CLI — `crossctx scan` as primary entry point with plain-English hook summary
+- [x] Architecture insights layer (`src/analyzer/insights.ts`) — circular deps, high fan-out, fan-in, tight coupling, unresolved calls, isolated services
+- [x] `crossctx insights` subcommand — exits code 1 on critical issues (CI-compatible)
+- [x] `crossctx blame <ServiceName>` / `crossctx impact` — BFS blast radius analysis
+- [x] `crossctx explain <endpoint>` — clipboard-ready LLM context builder
+- [x] `crossctx trace <endpoint>` — ASCII call-chain tree visualizer
+- [x] `crossctx graph` and `crossctx export` as explicit subcommands with `--input` support
+- [x] README rewritten with "Find hidden service dependencies instantly" positioning
+
+---
+
+## v2.1 — Bug Fixes ✅ Released
+
+Lint clean, stable v2.0 CLI.
+
+- [x] Fixed unused `fileConfig` variable lint error in root shorthand command action
+- [x] Version bumped to `2.1.0`
+
+---
+
+## v2.x — Next
+
+- [ ] PR impact analysis GitHub Action — comments "this PR affects N services and M APIs"
+- [ ] VS Code extension — inline annotations showing which services call a given endpoint
+- [ ] Watch mode insights — re-run `insights` automatically on file changes
+- [ ] Payload extractor enrichment — cross-file DTO resolution, confidence scoring
+- [ ] HTML graph polish — depth visualization, language color bands, PNG/SVG export
+
+---
+
 ## v1.x and Beyond — AI Layer
 
 This is the long-term direction. The structured output CrossCtx produces is the foundation for LLM-powered features.
