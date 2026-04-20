@@ -73,8 +73,6 @@ function parseGraphQLSchema(
 ): { operations: GraphQLOperation[]; typeNames: Set<string> } {
   const operations: GraphQLOperation[] = [];
   const typeNames = new Set<string>();
-  const lines = content.split("\n");
-
   // Collect all type names: type Foo { ... }  enum Bar { ... }  input Baz { ... }
   const typeRegex = /^(?:type|enum|input|interface|union)\s+(\w+)/gm;
   let m: RegExpExecArray | null;
@@ -95,7 +93,7 @@ function parseGraphQLSchema(
     // orders(filter: OrderFilter, page: Int): [Order!]!
     // getUser(id: ID!): User
     const fieldRegex =
-      /^\s+(\w+)\s*(?:\([^)]*(?:\:\s*(\w+)[!?\][\s]*)?[^)]*\))?\s*:\s*\[?(\w+)/gm;
+      /^\s+(\w+)\s*(?:\([^)]*(?::\s*(\w+)[!?\][\s]*)?[^)]*\))?\s*:\s*\[?(\w+)/gm;
     let fm: RegExpExecArray | null;
 
     while ((fm = fieldRegex.exec(body)) !== null) {
