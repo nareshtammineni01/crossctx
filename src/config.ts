@@ -25,6 +25,12 @@ export interface CrossCtxConfig {
   openapiOnly?: boolean;
   /** Filter edges below this confidence threshold (0–1) */
   minConfidence?: number;
+  /**
+   * Community plugin specifiers to load.
+   * Each item is an npm package name or a local file path.
+   * e.g. ["crossctx-plugin-ruby", "./my-local-plugin.js"]
+   */
+  plugins?: string[];
 }
 
 const CONFIG_FILE_NAMES = [".crossctxrc.json", "crossctx.config.json"];

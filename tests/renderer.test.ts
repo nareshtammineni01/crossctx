@@ -48,7 +48,7 @@ describe("renderer", () => {
       const deps = analyzeDependencies(parsedSpecs);
       const output = buildOutput(parsedSpecs, deps, ["./examples"], 3);
 
-      expect(output.meta.version).toBe("0.1.0");
+      expect(output.meta.version).toBe("1.0.0");
       expect(output.meta.totalFiles).toBe(3);
       expect(output.meta.scanPaths).toContain(path.resolve("./examples"));
       expect(output.meta.generatedAt).toBeTruthy();

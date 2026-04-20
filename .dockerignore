@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.github
+tests
+examples
+docs
+*.md
+*.html
+*.json
+!package*.json
+!tsconfig*.json
+coverage
+.nyc_output
+*.log

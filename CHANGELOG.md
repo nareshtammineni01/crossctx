@@ -10,7 +10,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Planned
 - Payload extractor enrichment (cross-file DTO resolution, confidence scoring)
 - HTML report polish (depth visualization, language color bands, PNG/SVG export)
-- Formal JSON schema versioning
+
+---
+
+## [1.0.0] - 2026-04-19
+
+Production-ready release. Stable JSON schema, full test coverage, plugin interface, `crossctx diff` subcommand, Docker image, and performance benchmarks.
+
+### Added
+
+**Stable JSON output schema (v1.0)**
+- `meta.schemaVersion` field added to every output file — always `"1.0"` in this release
+- Schema follows semver: patch = bug-fix only, minor = additive, major = breaking
+- Migration guide at [`docs/schema-migration.md`](docs/schema-migration.md)
+
+**Plugin / analyzer interface (`src/plugins/interface.ts`)**
+- Community contributors can add language parsers without forking crossctx
+- Implement `LanguageParserPlugin` with `canHandle`, `detect`, and `parse` methods
+- Register via the `plugins` array in `.crossctxrc.json`: `"plugins": ["crossctx-plugin-ruby"]`
+- Dynamic import with error isolation — a broken plugin never crashes the scan
+- Exported from the main package as `registerPlugin`, `getPlugins`, `findPlugin`, `loadPlugins`
+
+**`crossctx diff` subcommand**
+- Human-readable breaking-change report: `crossctx diff <baseline.json> <current.json>`
+- Prints `[REMOVED]`, `[CHANGED]`, `[ADDED]` with per-endpoint detail
+- `--format json` flag for machine-readable output (CI integration)
+- Exits non-zero when breaking changes are detected (blocks CI pipelines)
+- Complements the existing `--diff` flag (which runs automatically after a scan)
+
+**Docker image (`Dockerfile`)**
+- Multi-stage build: builder + minimal Alpine runtime, non-root user
+- `docker run --rm -v "$(pwd):/workspace" crossctx /workspace/svc-a /workspace/svc-b`
+- `.dockerignore` minimizes image size
+- Full CI guide at [`docs/docker-ci.md`](docs/docker-ci.md)
+- GitHub Actions examples for scan and breaking-change detection
+
+**Full test coverage**
+- `tests/go-parser.test.ts` — Go endpoint extraction, gRPC proto parsing, outbound call detection
+- `tests/grpc-parser.test.ts` — proto file parsing, `grpcServicesToEndpoints`, streaming RPCs, outbound calls
+- `tests/graphql-parser.test.ts` — schema parsing, operation extraction (Query/Mutation/Subscription), endpoint conversion
+- `tests/db-parser.test.ts` — all 5 languages × SQL/MongoDB/Redis/DynamoDB/Elasticsearch patterns
+- `tests/shared-libs.test.ts` — shared library detection via both `detectSharedLibraries` and `detectSharedLibrariesFromContents`
+- `tests/differ.test.ts` — no changes, removed endpoints, added endpoints, changed request body type, removed/added fields, summary counts
+- `tests/plugin-interface.test.ts` — registry, find, overwrite, error isolation, CodeScanResult shape
+
+**Performance benchmarks (`scripts/benchmark.ts`)**
+- Measures wall time and peak RSS against the examples corpus and a synthetic N-service corpus
+- `npm run bench` — quick check with examples
+- `npm run bench:large` — 50-service, 800-file synthetic scan (~12 s on M2)
+- `npm run bench:large -- --services 100 --files-per-service 32` — custom sizing
+- Benchmarks table added to README
+
+### Changed
+- `meta.version` in JSON output updated to `"1.0.0"` (was `"0.1.0"`)
+- CLI version string updated to `1.0.0`
+- Unknown-language fallback now checks community plugins before emitting a warning
+- `.crossctxrc.json` supports a new `plugins` array field
 
 ---
 

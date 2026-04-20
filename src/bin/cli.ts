@@ -35,6 +35,9 @@ import { diffOutputs } from "../differ/index.js";
 // Config file support
 import { loadConfig, mergeConfig, DEFAULT_CONFIG_JSON } from "../config.js";
 
+// Plugin interface
+import { loadPlugins, findPlugin } from "../plugins/interface.js";
+
 import type { ParsedSpec, CodeScanResult, CrossCtxOutput } from "../types/index.js";
 
 const program = new Command();
@@ -136,32 +139,53 @@ async function runScan(
             const serviceName = deriveServiceName(projectPath);
             scanResult = await parseGoProject(projectPath, lang, serviceName);
           } else {
-            // Unknown language — service name only placeholder
-            const serviceName = deriveServiceName(projectPath);
-            if (!options.quiet) {
-              const dirName = path.basename(projectPath);
-              console.log(`  ⚠️  Could not detect a supported language in: ${dirName}`);
-              console.log(`     crossctx looks for these markers:`);
-              console.log(`       TypeScript/JS  →  package.json`);
-              console.log(`       Java           →  pom.xml or build.gradle`);
-              console.log(`       C#             →  *.csproj or *.sln`);
-              console.log(`       Python         →  requirements.txt, pyproject.toml, or Pipfile`);
-              console.log(`       Go             →  go.mod`);
-              console.log(`     Options:`);
-              console.log(`       • Add one of the above marker files to ${dirName}/`);
-              console.log(`       • Use --openapi-only to scan only OpenAPI/Swagger specs`);
-              console.log(`       • Run \`crossctx init\` to set up a config file`);
-              console.log();
+            // Unknown language — check community plugins first
+            const dirName = path.basename(projectPath);
+            const allFiles = await fg(["**/*"], {
+              cwd: projectPath,
+              ignore: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
+              onlyFiles: true,
+            });
+            const plugin = findPlugin(projectPath, allFiles);
+
+            if (plugin) {
+              if (!options.quiet) {
+                console.log(`  → ${dirName} handled by plugin "${plugin.name}"`);
+              }
+              const pluginLang = plugin.detect(projectPath, allFiles);
+              const serviceName = deriveServiceName(projectPath);
+              scanResult = await plugin.parse(projectPath, pluginLang, serviceName);
+            } else {
+              const serviceName = deriveServiceName(projectPath);
+              if (!options.quiet) {
+                console.log(`  ⚠️  Could not detect a supported language in: ${dirName}`);
+                console.log(`     crossctx looks for these markers:`);
+                console.log(`       TypeScript/JS  →  package.json`);
+                console.log(`       Java           →  pom.xml or build.gradle`);
+                console.log(`       C#             →  *.csproj or *.sln`);
+                console.log(
+                  `       Python         →  requirements.txt, pyproject.toml, or Pipfile`,
+                );
+                console.log(`       Go             →  go.mod`);
+                console.log(`     Options:`);
+                console.log(`       • Add one of the above marker files to ${dirName}/`);
+                console.log(`       • Use --openapi-only to scan only OpenAPI/Swagger specs`);
+                console.log(`       • Run \`crossctx init\` to set up a config file`);
+                console.log(
+                  `       • Install a community plugin and add it to your config's "plugins" array`,
+                );
+                console.log();
+              }
+              scanResult = {
+                projectPath,
+                language: lang,
+                serviceName,
+                endpoints: [],
+                dtos: [],
+                serviceUrlHints: [],
+                hasOpenApiSpec: false,
+              };
             }
-            scanResult = {
-              projectPath,
-              language: lang,
-              serviceName,
-              endpoints: [],
-              dtos: [],
-              serviceUrlHints: [],
-              hasOpenApiSpec: false,
-            };
           }
 
           if (scanResult) {
@@ -402,11 +426,136 @@ program
     );
   });
 
+// ── `crossctx diff` subcommand ────────────────────────────────────────────────
+program
+  .command("diff <baseline> <current>")
+  .description("Compare two crossctx JSON output files and report breaking changes")
+  .option("-f, --format <format>", "output format: human (default) or json", "human")
+  .action(async (baselineArg: string, currentArg: string, diffOptions: { format: string }) => {
+    const baselinePath = path.resolve(baselineArg);
+    const currentPath = path.resolve(currentArg);
+
+    let baselineOutput: CrossCtxOutput;
+    let currentOutput: CrossCtxOutput;
+
+    try {
+      baselineOutput = JSON.parse(await readFile(baselinePath, "utf-8")) as CrossCtxOutput;
+    } catch (err) {
+      console.error(
+        `\n  Error reading baseline: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+
+    try {
+      currentOutput = JSON.parse(await readFile(currentPath, "utf-8")) as CrossCtxOutput;
+    } catch (err) {
+      console.error(
+        `\n  Error reading current: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    }
+
+    const report = diffOutputs(baselineOutput, currentOutput);
+
+    if (diffOptions.format === "json") {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      // ── Human-readable report ─────────────────────────────────────────────
+      const hasBreaking = report.breaking.length > 0;
+      const hasNonBreaking = report.nonBreaking.length > 0;
+
+      console.log("\n  CrossCtx Diff Report");
+      console.log("  ─────────────────────────────────────────────");
+      console.log(`  Baseline : ${baselinePath}`);
+      console.log(`  Current  : ${currentPath}`);
+      console.log(`  Compared : ${report.scannedAt}`);
+      console.log();
+
+      // Summary line
+      const summaryParts: string[] = [];
+      if (report.summary.removedEndpoints > 0)
+        summaryParts.push(`${report.summary.removedEndpoints} removed`);
+      if (report.summary.addedEndpoints > 0)
+        summaryParts.push(`${report.summary.addedEndpoints} added`);
+      if (report.summary.changedEndpoints > 0)
+        summaryParts.push(`${report.summary.changedEndpoints} changed`);
+
+      if (summaryParts.length === 0) {
+        console.log("  ✅  No changes detected.\n");
+        process.exit(0);
+      }
+
+      console.log(`  Summary: ${summaryParts.join(", ")}`);
+      console.log();
+
+      // Breaking changes section
+      if (hasBreaking) {
+        console.log("  ⚠️  BREAKING CHANGES");
+        console.log("  ──────────────────────");
+        for (const change of report.breaking) {
+          const label = `${change.service}  ${change.method} ${change.path}`;
+          if (change.type === "removed") {
+            console.log(`  ✖  [REMOVED] ${label}`);
+          } else if (change.type === "changed" && change.changes) {
+            console.log(`  ✖  [CHANGED] ${label}`);
+            if (change.changes.requestBody) {
+              console.log(
+                `       request body: ${change.changes.requestBody.before ?? "(none)"} → ${change.changes.requestBody.after ?? "(none)"}`,
+              );
+            }
+            if (change.changes.response) {
+              console.log(
+                `       response:      ${change.changes.response.before ?? "(none)"} → ${change.changes.response.after ?? "(none)"}`,
+              );
+            }
+            if (change.changes.removedFields && change.changes.removedFields.length > 0) {
+              console.log(`       removed fields: ${change.changes.removedFields.join(", ")}`);
+            }
+            if (change.changes.addedFields && change.changes.addedFields.length > 0) {
+              console.log(`       added fields:   ${change.changes.addedFields.join(", ")}`);
+            }
+          }
+        }
+        console.log();
+      }
+
+      // Non-breaking changes section
+      if (hasNonBreaking) {
+        console.log("  ℹ️   NON-BREAKING CHANGES");
+        console.log("  ──────────────────────────");
+        for (const change of report.nonBreaking) {
+          const label = `${change.service}  ${change.method} ${change.path}`;
+          if (change.type === "added") {
+            console.log(`  ✚  [ADDED]   ${label}`);
+          } else if (change.type === "changed" && change.changes) {
+            console.log(`  ~  [CHANGED] ${label}`);
+            if (change.changes.addedFields && change.changes.addedFields.length > 0) {
+              console.log(`       added fields: ${change.changes.addedFields.join(", ")}`);
+            }
+          }
+        }
+        console.log();
+      }
+
+      // Exit code: non-zero if breaking changes found
+      if (hasBreaking) {
+        console.error(
+          `  ${report.summary.totalBreaking} breaking change(s) detected — failing build.\n`,
+        );
+        process.exit(1);
+      } else {
+        console.log("  ✅  No breaking changes.\n");
+        process.exit(0);
+      }
+    }
+  });
+
 // ── Main scan command ──────────────────────────────────────────────────────────
 program
   .name("crossctx")
   .description("Generate cross-service API dependency maps from source code + OpenAPI specs")
-  .version("0.3.0")
+  .version("1.0.0")
   .argument("[paths...]", "project directories to scan (one per microservice)")
   .option("-o, --output <file>", "output JSON file path")
   .option("-f, --format <format>", "output format: json, markdown, graph, or all (comma-separated)")
@@ -453,6 +602,13 @@ program
         if (options.output === undefined) options.output = "crossctx-output.json";
         if (options.quiet === undefined) options.quiet = false;
         if (options.openapiOnly === undefined) options.openapiOnly = false;
+
+        // ── Load community plugins ──────────────────────────────────────────
+        if (fileConfig.plugins && fileConfig.plugins.length > 0) {
+          await loadPlugins(fileConfig.plugins, (msg) => {
+            if (!options.quiet) console.warn(`  ${msg}`);
+          });
+        }
 
         // Resolve paths: CLI args > config file paths > error
         const inputPaths: string[] = pathArgs.length > 0 ? pathArgs : (fileConfig.paths ?? []);
@@ -503,7 +659,7 @@ program
 
         const resolvedPaths = inputPaths.map((p) => path.resolve(p));
 
-        if (!options.quiet) console.log("\n  CrossCtx v0.3.0\n");
+        if (!options.quiet) console.log("\n  CrossCtx v1.0.0\n");
 
         // Run initial scan
         const currentOutput = await runScan(resolvedPaths, {

@@ -1,6 +1,6 @@
 {
   "name": "crossctx",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Scan microservice source code and generate cross-service API dependency maps, interactive graphs, and LLM-ready context — no config required",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,6 +18,8 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench": "tsx scripts/benchmark.ts",
+    "bench:large": "tsx scripts/benchmark.ts --large",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

@@ -274,7 +274,14 @@ export interface Dependency {
 export interface CrossCtxOutput {
   meta: {
     generatedAt: string;
+    /** Tool version (semver) */
     version: string;
+    /**
+     * JSON output schema version (stable since v1.0).
+     * Consumers should check this field before processing output.
+     * Follows semver; breaking shape changes bump the major version.
+     */
+    schemaVersion: string;
     scanPaths: string[];
     totalFiles: number;
   };

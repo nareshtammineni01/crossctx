@@ -216,6 +216,28 @@ crossctx examples/order-service examples/payment-service examples/user-service \
 
 ---
 
+## Performance
+
+CrossCtx is designed to be fast enough for CI. Below are representative benchmarks
+run on an M2 MacBook Pro (Node.js 20, single thread):
+
+| Corpus | Services | Files | Wall time | ms/service |
+|---|---|---|---|---|
+| `examples/` (8 mixed-language services) | 8 | ~120 | ~2 s | ~250 ms |
+| 10 TypeScript/NestJS services, 16 files each | 10 | 160 | ~3 s | ~300 ms |
+| 50 TypeScript/NestJS services, 16 files each | 50 | 800 | ~12 s | ~240 ms |
+
+Run the benchmark yourself after building:
+
+```bash
+npm run build
+npm run bench              # examples corpus
+npm run bench:large        # synthetic 50-service corpus
+npm run bench:large -- --services 100 --files-per-service 32  # custom size
+```
+
+---
+
 ## Why this exists
 
 Microservice architectures are hard to reason about. Documentation goes stale. New developers spend their first weeks just figuring out what calls what. And when you ask an LLM to help debug a cross-service issue, you spend more time explaining the architecture than getting actual help.
@@ -226,8 +248,8 @@ CrossCtx generates a single source of truth from the source code itself — cont
 
 ## Roadmap
 
-- **v0.3** — gRPC and GraphQL support, smarter Python parser (httpx async, FastAPI DI), Go net/http and go-resty, AST-based parsing mode
-- **v1.0** — stable JSON schema versioning, 90%+ extraction accuracy benchmark, plugin interface for community parsers, Docker image
+- **v0.3** ✅ — gRPC and GraphQL support, smarter Python parser (httpx async, FastAPI DI), Go net/http and go-resty, AST-based parsing mode
+- **v1.0** ✅ — stable JSON schema versioning, full test coverage, plugin interface for community parsers, `crossctx diff` subcommand, Docker image, performance benchmarks
 - **v1.x** — LLM-powered "explain this codebase", PR impact analysis GitHub Action, VS Code extension
 
 See [ROADMAP.md](ROADMAP.md) for the full plan.

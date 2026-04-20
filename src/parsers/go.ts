@@ -781,10 +781,10 @@ function extractGoOutboundCalls(content: string, filePath: string): OutboundCall
         methodIndex: 1,
         urlIndex: 2,
       },
-      // Variable concatenation: serviceURL + "/api/orders"
+      // Variable/field concatenation: serviceURL + "/api/orders" or c.serviceURL + "/path"
       {
         regex:
-          /(?:http|client)\.(Get|Post|Put|Delete)\s*\(\s*([A-Za-z_]\w*\s*\+\s*["'][^"']+["'])/gi,
+          /(?:http|client)\.(Get|Post|Put|Delete)\s*\(\s*([A-Za-z_][\w.]*\s*\+\s*["'][^"']+["'])/gi,
         pattern: "http",
         methodIndex: 1,
         urlIndex: 2,

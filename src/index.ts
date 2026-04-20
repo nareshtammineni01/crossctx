@@ -29,6 +29,10 @@ export {
 // Diff / Breaking change detection
 export { diffOutputs } from "./differ/index.js";
 
+// Plugin interface (v1.0)
+export type { LanguageParserPlugin } from "./plugins/interface.js";
+export { registerPlugin, getPlugins, findPlugin, loadPlugins } from "./plugins/interface.js";
+
 export type {
   // Legacy types
   CrossCtxOutput,

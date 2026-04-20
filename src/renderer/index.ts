@@ -2,7 +2,8 @@ import { writeFile } from "fs/promises";
 import path from "path";
 import type { CrossCtxOutput, ParsedSpec, Dependency } from "../types/index.js";
 
-const VERSION = "0.1.0";
+const VERSION = "1.0.0";
+const SCHEMA_VERSION = "1.0";
 
 /**
  * Build the final CrossCtx output JSON
@@ -17,6 +18,7 @@ export function buildOutput(
     meta: {
       generatedAt: new Date().toISOString(),
       version: VERSION,
+      schemaVersion: SCHEMA_VERSION,
       scanPaths: scanPaths.map((p) => path.resolve(p)),
       totalFiles,
     },

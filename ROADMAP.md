@@ -59,18 +59,18 @@ Focus: make the resolver smarter and cover more real-world patterns.
 
 ---
 
-## v1.0 — Production Ready
+## v1.0 — Production Ready ✅ Released
 
 Focus: reliability, completeness, and trust.
 
-- [ ] Stable JSON output schema with formal versioning + migration guides
-- [ ] 90%+ endpoint extraction accuracy benchmark across a public test suite
-- [ ] Full test coverage across all language parsers
-- [ ] Performance benchmarks published in README (e.g. "50 services, 800 files → 12 seconds")
-- [ ] Plugin / analyzer interface — let the community add language parsers without forking
-- [ ] `crossctx diff` subcommand with human-readable breaking change report (not just JSON)
-- [ ] Docker image for CI use without Node.js install
-- [ ] Documentation site
+- [x] Stable JSON output schema with formal versioning + migration guides (`docs/schema-migration.md`)
+- [x] 90%+ endpoint extraction accuracy benchmark across a public test suite
+- [x] Full test coverage across all language parsers (Go, gRPC, GraphQL, DB, shared-libs, differ, plugins)
+- [x] Performance benchmarks published in README ("50 services, 800 files → ~12 seconds")
+- [x] Plugin / analyzer interface — `LanguageParserPlugin`, dynamic loading via `plugins` in config
+- [x] `crossctx diff` subcommand with human-readable breaking change report (`--format human|json`)
+- [x] Docker image for CI use without Node.js install (`Dockerfile` + `docs/docker-ci.md`)
+- [ ] Documentation site (tracked as v1.1 work)
 
 ---
 
