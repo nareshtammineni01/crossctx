@@ -109,6 +109,8 @@ These are the active priorities — work on these unless told otherwise:
 ```bash
 npm run build          # must succeed (tsup, no type errors)
 npm run lint           # zero ESLint errors (warnings OK if pre-existing)
+npm run lint:fix       # auto-fix lint issues before committing
+npm run test:watch     # use during active development for fast feedback
 npm test               # all Vitest tests green
 npm run format:check   # Prettier check must pass (fix with npm run format)
 ```
