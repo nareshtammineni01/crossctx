@@ -2,7 +2,7 @@
 
 **Find hidden service dependencies instantly.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-58a6ff?style=for-the-badge&logo=github)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-58a6ff?style=for-the-badge&logo=github)](https://nareshtammineni01.github.io/crossctx/)
 
 ```bash
 npx crossctx scan ./services
@@ -115,6 +115,19 @@ npx crossctx scan ./services
 
 ---
 
+## Screenshots
+
+[![Guided entry — choose Overview, Risk, Trace, or Explore](docs/CrossCtx-explore-preview.png)](https://nareshtammineni01.github.io/crossctx/)
+*Guided entry overlay — pick your intent when opening the graph*
+
+[![Insights panel — circular dependencies and risk warnings](docs/graph-ui-insights-preview.png)](https://nareshtammineni01.github.io/crossctx/)
+*Insights panel — circular deps, high fan-out, and blast radius warnings highlighted in the graph*
+
+[![Endpoint detail panel with call chain and AI context builder](docs/graph-ui-api-details-preview.png)](https://nareshtammineni01.github.io/crossctx/)
+*Endpoint detail panel — full call chain, request/response shapes, and one-click AI context copy*
+
+---
+
 ## Commands
 
 ### `crossctx scan` — the starting point
@@ -152,7 +165,7 @@ crossctx graph ./services -o service-view-map.html --min-confidence 0.7
 
 Generates a self-contained interactive HTML file. Open in any browser — no server needed.
 
-[![CrossCtx guided entry overlay — choose Overview, Risk, Trace, or Explore](docs/CrossCtx-explore-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
+[![CrossCtx guided entry overlay — choose Overview, Risk, Trace, or Explore](docs/CrossCtx-explore-preview.png)](https://nareshtammineni01.github.io/crossctx/)
 
 **Graph features:**
 - **Guided entry** — choose your intent on open: System Overview, Find Risky Services, Trace an API, or Explore freely
@@ -201,7 +214,7 @@ Exits with code 1 if critical issues (circular dependencies) are found — usefu
 
 Insights are also surfaced directly in the graph — click the **Insights** tab in the right panel to see all warnings, and click any insight to highlight the affected services:
 
-[![CrossCtx graph showing Insights panel with circular dependency and risk warnings](docs/graph-ui-insights-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
+[![CrossCtx graph showing Insights panel with circular dependency and risk warnings](docs/graph-ui-insights-preview.png)](https://nareshtammineni01.github.io/crossctx/)
 
 ---
 
@@ -271,7 +284,7 @@ Generates a ready-to-paste context block for ChatGPT or any LLM — including th
 
 The AI Context Builder is also built into the graph — click any endpoint to see its full detail and hit **Copy context**:
 
-[![CrossCtx graph showing endpoint detail panel with call chain and AI context builder](docs/graph-ui-api-details-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
+[![CrossCtx graph showing endpoint detail panel with call chain and AI context builder](docs/graph-ui-api-details-preview.png)](https://nareshtammineni01.github.io/crossctx/)
 
 ---
 

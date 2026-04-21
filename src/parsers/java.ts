@@ -418,6 +418,16 @@ function extractJavaOutboundCalls(content: string, filePath: string): OutboundCa
         /restClient\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
       pattern: "RestClient",
     },
+    // OkHttp: new Request.Builder().url("https://...").build()
+    {
+      regex: /new\s+Request\.Builder\s*\(\s*\)\s*\.url\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "OkHttp",
+    },
+    // OkHttp: .url(variableName) — URL stored in a variable (most common pattern)
+    {
+      regex: /\.url\s*\(\s*([\w.]+(?:Url|URL|Uri|URI|Endpoint|endpoint|apiUrl|url))\s*\)/gi,
+      pattern: "OkHttp",
+    },
   ];
 
   for (const { regex, pattern } of patterns) {
@@ -735,14 +745,18 @@ function extractJavaServiceUrlHints(fileContents: Map<string, string>): ServiceU
     }
 
     if (fileName.endsWith(".yml") || fileName.endsWith(".yaml")) {
-      // url: http://order-service:8082 or base-url: ...
-      const yamlRegex = /(?:url|host|endpoint|base-url|base_url)\s*:\s*(.+)/gi;
+      // url: http://order-service:8082 or base-url: / api-url: / api_url: ...
+      const yamlRegex =
+        /(?:url|host|endpoint|base-url|base_url|api-url|api_url|api-endpoint|service-url|service_url)\s*:\s*(.+)/gi;
       let match: RegExpExecArray | null;
       while ((match = yamlRegex.exec(content)) !== null) {
         const value = match[1].trim();
-        if (value.startsWith("http") && !seen.has(value)) {
-          seen.add(value);
-          hints.push({ key: `YAML_URL_${hints.length}`, value, sourceFile: filePath });
+        // Strip environment variable wrappers like ${ANTHROPIC_API_KEY:https://...}
+        const cleaned = value.replace(/^\$\{[^:}]+:([^}]*)\}$/, "$1").trim();
+        const urlVal = cleaned.startsWith("http") ? cleaned : value;
+        if (urlVal.startsWith("http") && !seen.has(urlVal)) {
+          seen.add(urlVal);
+          hints.push({ key: `YAML_URL_${hints.length}`, value: urlVal, sourceFile: filePath });
         }
       }
     }

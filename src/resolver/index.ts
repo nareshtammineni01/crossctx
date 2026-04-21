@@ -264,6 +264,44 @@ function guessServiceFromName(
 // For each outbound call, resolve which service + endpoint it targets
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Well-known external API domains → friendly service names
+const EXTERNAL_API_MAP: Record<string, string> = {
+  "api.anthropic.com": "anthropic-api",
+  "api.openai.com": "openai-api",
+  "api.stripe.com": "stripe-api",
+  "api.twilio.com": "twilio-api",
+  "api.sendgrid.com": "sendgrid-api",
+  "api.mailgun.net": "mailgun-api",
+  "api.github.com": "github-api",
+  "graph.microsoft.com": "microsoft-graph-api",
+  "api.slack.com": "slack-api",
+  "hooks.slack.com": "slack-api",
+  "api.segment.io": "segment-api",
+  "api.mixpanel.com": "mixpanel-api",
+  "api.amplitude.com": "amplitude-api",
+  "api.hubapi.com": "hubspot-api",
+  "api.salesforce.com": "salesforce-api",
+  "s3.amazonaws.com": "aws-s3",
+  "sns.amazonaws.com": "aws-sns",
+  "sqs.amazonaws.com": "aws-sqs",
+  "storage.googleapis.com": "gcp-storage",
+};
+
+function resolveExternalApi(rawUrl: string): string | undefined {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+    if (EXTERNAL_API_MAP[host]) return EXTERNAL_API_MAP[host];
+    // AWS regional endpoints: s3.us-east-1.amazonaws.com
+    for (const [pattern, name] of Object.entries(EXTERNAL_API_MAP)) {
+      if (host.endsWith(pattern) || host.includes(pattern.split(".")[0] + ".")) return name;
+    }
+  } catch {
+    // not a valid URL
+  }
+  return undefined;
+}
+
 export function resolveOutboundCall(
   call: OutboundCall,
   registry: ServiceRegistry,
@@ -271,6 +309,61 @@ export function resolveOutboundCall(
 ): OutboundCall {
   const resolved = { ...call };
   const rawUrl = call.rawUrl;
+
+  // ── Strategy -1: Well-known external APIs (Anthropic, OpenAI, Stripe, etc.) ──
+  if (rawUrl.startsWith("http")) {
+    const externalName = resolveExternalApi(rawUrl);
+    if (externalName) {
+      resolved.resolvedService = externalName;
+      resolved.confidence = 0.95;
+      try {
+        resolved.resolvedPath = new URL(rawUrl).pathname || undefined;
+      } catch {
+        /* ignore */
+      }
+      return resolved;
+    }
+  }
+
+  // ── Strategy -0.5: Bare variable name (e.g. OkHttp .url(apiUrl)) ──
+  // Look up the variable name against YAML/properties hints and resolve via external API map
+  const isBareVar = /^[a-zA-Z_$][a-zA-Z0-9_.]*$/.test(rawUrl) && !rawUrl.startsWith("http");
+  if (isBareVar) {
+    const varUpper = rawUrl.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+    for (const [, result] of registry.byName) {
+      const hint = result.serviceUrlHints.find((h) => {
+        const hKeyUpper = h.key.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+        return hKeyUpper === varUpper || h.key.toUpperCase() === varUpper;
+      });
+      if (hint?.value?.startsWith("http")) {
+        // First check if it's a known external API
+        const externalName = resolveExternalApi(hint.value);
+        if (externalName) {
+          resolved.resolvedService = externalName;
+          resolved.confidence = 0.9;
+          try {
+            resolved.resolvedPath = new URL(hint.value).pathname || undefined;
+          } catch {
+            /* ignore */
+          }
+          return resolved;
+        }
+        // Otherwise try to match against known internal services by hostname
+        try {
+          const url = new URL(hint.value);
+          const byHost = registry.byHostname.get(url.hostname);
+          if (byHost && byHost !== currentService) {
+            resolved.resolvedService = byHost;
+            resolved.resolvedPath = url.pathname || undefined;
+            resolved.confidence = 0.85;
+            return resolved;
+          }
+        } catch {
+          /* skip */
+        }
+      }
+    }
+  }
 
   // ── Strategy 0: Named client / FeignClient / LoadBalancer (highest confidence) ──
   // feign://order-service/api/orders  (Java FeignClient)
