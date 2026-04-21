@@ -16,6 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.1] - 2026-04-20
+
+Documentation and graph UX release — README screenshots, live demo, and graph UI polish.
+
+### Added
+- README: live demo badge linking to hosted graph preview
+- README: three screenshots embedded in graph, insights, and explain sections (`CrossCtx-explore-preview.png`, `graph-ui-insights-preview.png`, `graph-ui-api-details-preview.png`)
+- README: "What CrossCtx Does" section, Outputs table, Configuration section with cleaner format
+- README: "question → command" framing in Real Use Cases
+- Graph: guided entry overlay with four intent modes (Overview, Risk, Trace, Explore)
+- Graph: Focus mode toolbar (Overview / Dependencies / Risk / Debug)
+- Graph: Risk mode — nodes colored red/orange/green by fan-out severity
+- Graph: Insights panel tab — architecture warnings clickable to highlight nodes
+- `docs/crossctx-context-demo-preview.html` — self-contained live demo for GitHub Pages
+
+### Changed
+- README: output block updated to 7 services / 42 endpoints / 18 calls with Insights block
+- README: `crossctx explain` section retitled to "copy context for ChatGPT / AI"
+- README: `crossctx diff` section retitled to "detect breaking changes"
+- Version bumped to `2.1.1` in `package.json` and `src/bin/cli.ts`
+
+---
+
 ## [2.1.0] - 2026-04-20
 
 Bug fix and polish release — lint clean, stable v2.0 CLI.

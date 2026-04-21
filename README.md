@@ -2,25 +2,29 @@
 
 **Find hidden service dependencies instantly.**
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-58a6ff?style=for-the-badge&logo=github)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
+
 ```bash
-npx crossctx scan
+npx crossctx scan ./services
 ```
 
 ```
   🔍 CrossCtx Results
   ─────────────────────────────────────────────
 
-  ✔ 3 services detected
-  ✔ 24 endpoints mapped
-  ✔ 11 cross-service calls found
+  ✔ 7 services detected
+  ✔ 42 endpoints mapped
+  ✔ 18 cross-service calls found
 
   Top dependencies:
-    - order-service → payment-service
-    - order-service → user-service
+    - order-service   → payment-service
+    - order-service   → inventory-service
     - payment-service → user-service
 
-  ⚠️  High fan-out:
-    - order-service calls 3 services
+  ⚠️  Insights:
+    - order-service has high fan-out (calls 4 services)
+    - user-service is a critical dependency (used by 3 services)
+    - 2 unresolved service calls detected
 
   Next steps:
     crossctx graph        # open interactive dependency graph
@@ -31,6 +35,55 @@ npx crossctx scan
 
 No config. No instrumentation. No agents running in your cluster.  
 CrossCtx reads your source code directly and tells you how your services actually connect.
+
+---
+
+## Quick Reference
+
+```bash
+# Scan your services and print a summary
+npx crossctx scan ./services
+
+# Generate an interactive HTML dependency graph
+npx crossctx graph ./services -o service-view-map.html
+
+# Open the graph from a previous scan (no rescan needed)
+npx crossctx graph --input crossctx-output.json -o service-view-map.html
+
+# Architecture analysis — circular deps, high fan-out, risk
+npx crossctx insights ./services
+
+# Blast radius — what breaks if this service goes down?
+npx crossctx blame PaymentService
+
+# Trace every hop for an endpoint
+npx crossctx trace /api/orders
+
+# Detect breaking API changes (great for CI)
+npx crossctx diff baseline.json
+
+# Export scan results to JSON and Markdown
+npx crossctx export --format all
+
+# Save yourself from typing paths every time
+npx crossctx init        # creates .crossctxrc.json
+npx crossctx scan        # reads paths from config
+```
+
+---
+
+## What CrossCtx Does
+
+CrossCtx scans your code and:
+
+- Detects services automatically
+- Extracts APIs (controllers, endpoints)
+- Understands request/response payloads
+- Maps cross-service calls
+- Builds full call chains
+- Identifies architecture risks
+
+All from source code — no OpenAPI required.
 
 ---
 
@@ -84,14 +137,27 @@ crossctx scan      # reads paths from config
 ### `crossctx graph` — visualize the dependency map
 
 ```bash
+# Basic — outputs crossctx-graph.html in the current directory
 crossctx graph ./order-service ./payment-service ./user-service
+
+# Custom output file name (use -o to specify where to save)
+crossctx graph ./services -o service-view-map.html
+
+# Scan multiple dirs, save to a subfolder
+crossctx graph ./order-service ./payment-service -o ./output/service-view-map.html
+
+# Filter out low-confidence edges for a cleaner graph
+crossctx graph ./services -o service-view-map.html --min-confidence 0.7
 ```
 
 Generates a self-contained interactive HTML file. Open in any browser — no server needed.
 
-[![CrossCtx graph UI showing services, confidence-colored edges, and endpoint detail panel](docs/graph-ui.png)](https://nareshtammineni01.github.io/crossctx/crossctx-graph.html)
+[![CrossCtx guided entry overlay — choose Overview, Risk, Trace, or Explore](docs/CrossCtx-explore-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
 
 **Graph features:**
+- **Guided entry** — choose your intent on open: System Overview, Find Risky Services, Trace an API, or Explore freely
+- **Focus modes** — Overview / Dependencies / Risk / Debug toolbar changes graph coloring and behavior
+- **Risk mode** — nodes colored red / orange / green by fan-out severity
 - Services view and Controllers view
 - Min-confidence slider — filter noisy edges in real-time
 - Service filter chips — isolate one service and its connections
@@ -132,6 +198,10 @@ Runs a full analysis pass and surfaces:
 ```
 
 Exits with code 1 if critical issues (circular dependencies) are found — useful in CI.
+
+Insights are also surfaced directly in the graph — click the **Insights** tab in the right panel to see all warnings, and click any insight to highlight the affected services:
+
+[![CrossCtx graph showing Insights panel with circular dependency and risk warnings](docs/graph-ui-insights-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
 
 ---
 
@@ -182,7 +252,7 @@ See exactly what happens — service by service — when an endpoint is called.
 
 ---
 
-### `crossctx explain` — LLM context builder
+### `crossctx explain` — copy context for ChatGPT / AI
 
 ```bash
 crossctx explain /api/orders
@@ -193,9 +263,15 @@ Generates a ready-to-paste context block for ChatGPT or any LLM — including th
 ```
   Copied to clipboard ✅
 
-  Endpoint: order-service — POST /api/orders
-  Calls:    payment-service, inventory-service
+  Includes:
+  - full call chain
+  - request/response schema
+  - dependent services
 ```
+
+The AI Context Builder is also built into the graph — click any endpoint to see its full detail and hit **Copy context**:
+
+[![CrossCtx graph showing endpoint detail panel with call chain and AI context builder](docs/graph-ui-api-details-preview.png)](https://nareshtammineni01.github.io/crossctx/crossctx-context-demo-preview.html)
 
 ---
 
@@ -215,10 +291,10 @@ crossctx export --input crossctx-output.json --format all
 
 ---
 
-### `crossctx diff` — breaking change detection
+### `crossctx diff` — detect breaking changes
 
 ```bash
-crossctx diff baseline.json crossctx-output.json
+crossctx diff baseline.json
 ```
 
 Compares two scans and reports added, removed, and changed endpoints. Exits with code 1 on breaking changes — designed for CI gating.
@@ -226,20 +302,24 @@ Compares two scans and reports added, removed, and changed endpoints. Exits with
 ```bash
 # In CI: save baseline on main, compare on PRs
 crossctx scan ./services --output baseline.json
-crossctx diff baseline.json crossctx-output.json
+crossctx diff baseline.json
 ```
 
 ---
 
 ## Real Use Cases
 
-**Debug faster** — "Why is this endpoint failing?" → see every downstream service it calls in seconds.
+**"Why is this endpoint failing?"**  
+→ `crossctx trace /api/orders` — see every downstream service it calls in seconds.
 
-**Change safely** — "What breaks if I modify this?" → `crossctx impact <ServiceName>` before you merge.
+**"What breaks if I change this?"**  
+→ `crossctx blame <ServiceName>` — blast radius analysis before you merge.
 
-**Onboard faster** — "How does this system work?" → run `crossctx scan` + `crossctx graph` on day one.
+**"How does this system work?"**  
+→ `crossctx scan` + `crossctx graph` — visual + structured understanding on day one.
 
-**Supercharge AI tools** — paste `crossctx explain /api/orders` output directly into ChatGPT for architecture-aware debugging.
+**"Explain this codebase to ChatGPT"**  
+→ `crossctx explain /api/orders` — copies full call chain + schemas to clipboard, ready to paste.
 
 ---
 
@@ -259,20 +339,36 @@ OpenAPI/Swagger specs are also scanned when present and used to enrich the outpu
 
 ---
 
-## Config File
+## Configuration (optional)
 
 ```bash
-crossctx init   # scaffolds .crossctxrc.json
+crossctx init
 ```
+
+Creates `.crossctxrc.json`:
 
 ```json
 {
-  "paths": ["./order-service", "./payment-service", "./user-service"],
-  "output": "crossctx-output.json"
+  "paths": ["./order-service", "./payment-service"],
+  "format": "all"
 }
 ```
 
-Once configured, all commands pick up paths automatically — no arguments needed.
+Then run any command without repeating paths:
+
+```bash
+crossctx scan
+```
+
+---
+
+## Outputs
+
+| Format | File | Description |
+|---|---|---|
+| **JSON** | `crossctx-output.json` | Structured for automation and AI tools |
+| **Markdown** | `crossctx-output.md` | LLM-ready summary for prompts and docs |
+| **Graph** | `crossctx-graph.html` | Self-contained interactive HTML file |
 
 ---
 
