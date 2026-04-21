@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [2.1.2] - 2026-04-21
+
+### Fixed
+- **Polyglot repo detection** — when `crossctx scan` is pointed at a repo root that contains both a `package.json` (frontend) and a `pom.xml` / `build.gradle` / `go.mod` / `requirements.txt` (backend), TypeScript was incorrectly selected first and returned 0 endpoints. The scanner now falls back to Java, Go, or Python parsers when the TypeScript scan yields 0 endpoints, automatically picking whichever returns the most results. Fixes 0-endpoint graphs on Spring Boot, Go, and Python projects that live alongside a JS frontend.
+
+### Changed
+- Version bumped to `2.1.2` in `package.json` and `src/bin/cli.ts`
+
+---
+
 ## [2.1.1] - 2026-04-20
 
 Documentation and graph UX release — README screenshots, live demo, and graph UI polish.

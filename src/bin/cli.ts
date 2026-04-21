@@ -43,9 +43,22 @@ import { computeInsights, formatInsights } from "../analyzer/insights.js";
 
 import type { ParsedSpec, CodeScanResult, CrossCtxOutput } from "../types/index.js";
 
-const VERSION = "2.1.1";
+const VERSION = "2.1.2";
 
 const program = new Command();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fileExistsCheck(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED SCAN PIPELINE
@@ -128,6 +141,69 @@ async function runScan(
             }
             const serviceName = deriveServiceName(projectPath, pkg);
             scanResult = await parseTypeScriptProject(projectPath, lang, serviceName);
+
+            // Fallback: if TS scan found 0 endpoints, the project root may be a
+            // polyglot repo (e.g. Next.js frontend + Java/Python backend at root).
+            // Try other language detectors and use whichever yields more endpoints.
+            if (scanResult.endpoints.length === 0) {
+              const hasPom = await fileExistsCheck(path.join(projectPath, "pom.xml"));
+              const hasGradle =
+                (await fileExistsCheck(path.join(projectPath, "build.gradle"))) ||
+                (await fileExistsCheck(path.join(projectPath, "build.gradle.kts")));
+              const hasGoMod = await fileExistsCheck(path.join(projectPath, "go.mod"));
+              const hasPyReq =
+                (await fileExistsCheck(path.join(projectPath, "requirements.txt"))) ||
+                (await fileExistsCheck(path.join(projectPath, "pyproject.toml")));
+
+              if (hasPom || hasGradle) {
+                const javaLang = {
+                  language: "java" as const,
+                  framework: "spring-boot" as const,
+                  detectedFrom: hasPom
+                    ? path.join(projectPath, "pom.xml")
+                    : path.join(projectPath, "build.gradle"),
+                  confidence: 0.9,
+                };
+                const javaResult = await parseJavaProject(projectPath, javaLang, serviceName);
+                if (javaResult.endpoints.length > scanResult.endpoints.length) {
+                  if (!options.quiet)
+                    console.log(
+                      `  ↳ TypeScript scan found 0 endpoints — switched to Java parser (found ${javaResult.endpoints.length})`,
+                    );
+                  scanResult = javaResult;
+                }
+              } else if (hasGoMod) {
+                const goLang = {
+                  language: "go" as const,
+                  framework: "unknown" as const,
+                  detectedFrom: path.join(projectPath, "go.mod"),
+                  confidence: 0.9,
+                };
+                const goResult = await parseGoProject(projectPath, goLang, serviceName);
+                if (goResult.endpoints.length > scanResult.endpoints.length) {
+                  if (!options.quiet)
+                    console.log(
+                      `  ↳ TypeScript scan found 0 endpoints — switched to Go parser (found ${goResult.endpoints.length})`,
+                    );
+                  scanResult = goResult;
+                }
+              } else if (hasPyReq) {
+                const pyLang = {
+                  language: "python" as const,
+                  framework: "unknown" as const,
+                  detectedFrom: path.join(projectPath, "requirements.txt"),
+                  confidence: 0.9,
+                };
+                const pyResult = await parsePythonProject(projectPath, pyLang, serviceName);
+                if (pyResult.endpoints.length > scanResult.endpoints.length) {
+                  if (!options.quiet)
+                    console.log(
+                      `  ↳ TypeScript scan found 0 endpoints — switched to Python parser (found ${pyResult.endpoints.length})`,
+                    );
+                  scanResult = pyResult;
+                }
+              }
+            }
           } else if (lang.language === "java") {
             scanResult = await parseJavaProject(projectPath, lang, deriveServiceName(projectPath));
           } else if (lang.language === "csharp") {
