@@ -71,6 +71,34 @@ export async function parseTypeScriptProject(
   // 7. Extract message events
   const messageEvents = extractMessageEvents(fileContents, "typescript");
 
+  // ── Service-layer + SDK scanning ─────────────────────────────────────────
+  // @Injectable providers / .service.ts files hold the actual HTTP calls in
+  // NestJS projects, just like @Service classes do in Spring Boot.
+  // AI SDK instantiations (new Anthropic(), new OpenAI(), etc.) are another
+  // common pattern that bypasses raw HTTP client detection.
+  // Both are collected here and attached to all controller endpoints.
+  const axiosBaseUrlMap = buildAxiosBaseUrlMap(fileContents);
+  const serviceLayerCalls = extractTypeScriptServiceLayerCalls(fileContents, axiosBaseUrlMap);
+  const sdkCalls = extractTypeScriptSDKCalls(fileContents);
+  const extraCalls = deduplicateCalls([...serviceLayerCalls, ...sdkCalls]);
+
+  if (extraCalls.length > 0) {
+    if (endpoints.length > 0) {
+      for (const ep of endpoints) {
+        ep.outboundCalls = deduplicateCalls([...ep.outboundCalls, ...extraCalls]);
+      }
+    } else {
+      endpoints.push({
+        service: serviceName,
+        method: "INTERNAL",
+        path: "/_service",
+        fullPath: "/_service",
+        outboundCalls: extraCalls,
+        sourceFile: projectPath,
+      });
+    }
+  }
+
   return {
     projectPath,
     language,
@@ -445,6 +473,28 @@ function extractOutboundCalls(content: string, filePath: string): OutboundCall[]
         methodGroup: 0,
         urlGroup: 1,
       },
+      // Node.js built-in: https.request({ hostname: "api.openai.com", path: "/v1/..." })
+      // or http.request({ host: "api.stripe.com" })
+      {
+        regex: /(?:https?|http)\.request\s*\(\s*\{[^}]*(?:hostname|host)\s*:\s*['"`]([^'"`\n]+)['"`]/g,
+        pattern: "node-https",
+        methodGroup: 0,
+        urlGroup: 1,
+      },
+      // undici: request("url") / fetch("url") from undici
+      {
+        regex: /(?:undici\.)?request\s*\(\s*(['"`]https?:\/\/[^'"`\n]+['"`])/g,
+        pattern: "undici",
+        methodGroup: 0,
+        urlGroup: 1,
+      },
+      // ky.get("url") / ky.post("url") — lightweight fetch wrapper
+      {
+        regex: /\bky\.(get|post|put|delete|patch)\s*\(\s*(['"`][^'"`\n]+['"`])/g,
+        pattern: "ky",
+        methodGroup: 1,
+        urlGroup: 2,
+      },
     ];
 
   for (const { regex, pattern, methodGroup, urlGroup } of patterns) {
@@ -717,6 +767,164 @@ function combinePaths(prefix: string, routePath: string): string {
   const p = normalizePathPrefix(prefix);
   const r = routePath.startsWith("/") ? routePath : `/${routePath}`;
   return `${p}${r}`.replace(/\/+/g, "/") || "/";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TypeScript service-layer scanning helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map of well-known AI/third-party SDK class names to their API base URLs.
+ * When these are instantiated in code, we synthesise an OutboundCall so the
+ * external API shows up in the dependency graph.
+ */
+const TS_SDK_MAP: Record<string, string> = {
+  // Anthropic
+  Anthropic: "https://api.anthropic.com/v1/messages",
+  AnthropicClient: "https://api.anthropic.com/v1/messages",
+  // OpenAI / Azure OpenAI
+  OpenAI: "https://api.openai.com/v1/chat/completions",
+  OpenAIClient: "https://api.openai.com/v1/chat/completions",
+  AzureOpenAI: "https://api.openai.com/v1/chat/completions",
+  // Stripe
+  Stripe: "https://api.stripe.com/v1/",
+  // Groq
+  Groq: "https://api.groq.com/openai/v1/chat/completions",
+  // Cohere
+  CohereClient: "https://api.cohere.ai/v1/",
+  Cohere: "https://api.cohere.ai/v1/",
+  // Google AI
+  GoogleGenerativeAI: "https://generativelanguage.googleapis.com/v1beta/",
+  // Mistral
+  MistralClient: "https://api.mistral.ai/v1/",
+  Mistral: "https://api.mistral.ai/v1/",
+  // Replicate
+  Replicate: "https://api.replicate.com/v1/predictions",
+  // Together AI
+  Together: "https://api.together.xyz/v1/chat/completions",
+  // Perplexity
+  Perplexity: "https://api.perplexity.ai/chat/completions",
+  // Resend (email)
+  Resend: "https://api.resend.com/",
+  // SendGrid
+  MailService: "https://api.sendgrid.com/v3/",
+  // Twilio
+  Twilio: "https://api.twilio.com/",
+  // Braintree
+  BraintreeGateway: "https://api.braintreegateway.com/",
+};
+
+/**
+ * Scans all files for AI/third-party SDK class instantiations (`new SdkName(...)`)
+ * and returns synthetic OutboundCalls pointing to the known API base URL.
+ */
+function extractTypeScriptSDKCalls(fileContents: Map<string, string>): OutboundCall[] {
+  const calls: OutboundCall[] = [];
+
+  for (const [filePath, content] of fileContents) {
+    for (const [className, apiUrl] of Object.entries(TS_SDK_MAP)) {
+      // Match: new ClassName( — with word-boundary check so "OpenAI" doesn't match "AzureOpenAI" twice
+      const regex = new RegExp(`\\bnew\\s+${className}\\s*\\(`, "g");
+      let m: RegExpExecArray | null;
+      regex.lastIndex = 0;
+      while ((m = regex.exec(content)) !== null) {
+        const lineNum = content.substring(0, m.index).split("\n").length;
+        calls.push({
+          rawUrl: apiUrl,
+          method: "POST",
+          callPattern: `${className}-sdk`,
+          sourceFile: filePath,
+          line: lineNum,
+          confidence: 0.9,
+        });
+      }
+    }
+  }
+
+  return deduplicateCalls(calls);
+}
+
+/**
+ * Builds a map of axios instance variable names → their configured base URL.
+ * Handles patterns like:
+ *   const client = axios.create({ baseURL: "https://api.anthropic.com" });
+ *   const anthropicApi = axios.create({ baseURL: process.env.ANTHROPIC_URL ?? "https://..." });
+ */
+function buildAxiosBaseUrlMap(fileContents: Map<string, string>): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const [, content] of fileContents) {
+    // const varName = axios.create({ baseURL: "url" [, ...] })
+    const createRegex =
+      /(?:const|let|var)\s+(\w+)\s*=\s*axios\.create\s*\(\s*\{[^}]*baseURL\s*:\s*(?:[^'"`]*)?['"`](https?:\/\/[^'"`\n]+)['"`]/g;
+    let m: RegExpExecArray | null;
+    createRegex.lastIndex = 0;
+    while ((m = createRegex.exec(content)) !== null) {
+      map.set(m[1], m[2]);
+    }
+
+    // Also handle: this.client = axios.create({ baseURL: ... }) in constructors
+    const thisCreateRegex =
+      /this\.(\w+)\s*=\s*axios\.create\s*\(\s*\{[^}]*baseURL\s*:\s*(?:[^'"`]*)?['"`](https?:\/\/[^'"`\n]+)['"`]/g;
+    thisCreateRegex.lastIndex = 0;
+    while ((m = thisCreateRegex.exec(content)) !== null) {
+      map.set(`this.${m[1]}`, m[2]);
+    }
+  }
+
+  return map;
+}
+
+function isTypeScriptServiceFile(filePath: string, content: string): boolean {
+  const fileName = path.basename(filePath).toLowerCase();
+  return (
+    fileName.includes(".service.") ||
+    fileName.includes(".provider.") ||
+    fileName.includes(".client.") ||
+    content.includes("@Injectable(") ||
+    content.includes("@Injectable()")
+  );
+}
+
+/**
+ * Scans @Injectable provider / .service.ts files for outbound HTTP calls and
+ * resolves any axios-instance relative-path calls using the base URL map.
+ */
+function extractTypeScriptServiceLayerCalls(
+  fileContents: Map<string, string>,
+  axiosBaseUrlMap: Map<string, string>,
+): OutboundCall[] {
+  const allCalls: OutboundCall[] = [];
+
+  for (const [filePath, content] of fileContents) {
+    if (!isTypeScriptServiceFile(filePath, content)) continue;
+
+    const rawCalls = extractOutboundCalls(content, filePath);
+
+    // Resolve axios instance relative-path calls:
+    // axiosInstance.post("/v1/messages") where axiosInstance has a known baseURL
+    const resolved = rawCalls.map((call) => {
+      if (call.rawUrl.startsWith("http")) return call;
+      if (!call.rawUrl.startsWith("/")) return call; // not a relative path
+
+      // Look for a matching axios instance: scan file for usage pattern varName.post(...)
+      for (const [varName, baseUrl] of axiosBaseUrlMap) {
+        // Check if this call site uses that instance (e.g. "this.client.post" or "client.post")
+        const callSiteLine =
+          content.split("\n")[Math.max(0, (call.line ?? 1) - 1)] ?? "";
+        const instanceRef = varName.startsWith("this.") ? varName : varName;
+        if (callSiteLine.includes(instanceRef)) {
+          const combined = baseUrl.replace(/\/$/, "") + call.rawUrl;
+          return { ...call, rawUrl: combined, confidence: Math.max(call.confidence, 0.85) };
+        }
+      }
+      return call;
+    });
+
+    allCalls.push(...resolved);
+  }
+
+  return deduplicateCalls(allCalls);
 }
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {

@@ -93,6 +93,36 @@ export async function parsePythonProject(
   // Extract message events
   const messageEvents = extractMessageEvents(fileContents, "python");
 
+  // ── Service-module + SDK scanning ─────────────────────────────────────────
+  // In FastAPI/Flask projects, service classes live in separate .py files that
+  // don't have any endpoint decorators, so the endpoint-loop above misses them.
+  // AI SDKs (anthropic, openai, LangChain) also bypass raw HTTP detection.
+  const httpxBaseUrlMap = buildHttpxBaseUrlMap(fileContents);
+  const serviceModuleCalls = extractPythonServiceModuleCalls(
+    fileContents,
+    framework,
+    httpxBaseUrlMap,
+  );
+  const sdkCalls = extractPythonSDKCalls(fileContents);
+  const extraCalls = deduplicatePythonCalls([...serviceModuleCalls, ...sdkCalls]);
+
+  if (extraCalls.length > 0) {
+    if (endpoints.length > 0) {
+      for (const ep of endpoints) {
+        ep.outboundCalls = deduplicatePythonCalls([...ep.outboundCalls, ...extraCalls]);
+      }
+    } else {
+      endpoints.push({
+        service: serviceName,
+        method: "INTERNAL",
+        path: "/_service",
+        fullPath: "/_service",
+        outboundCalls: extraCalls,
+        sourceFile: projectPath,
+      });
+    }
+  }
+
   return {
     projectPath,
     language,
@@ -730,6 +760,15 @@ function extractPythonOutboundCalls(content: string, filePath: string): Outbound
       pattern: "fstring-env",
       urlGroup: 1,
     },
+    // httpx.AsyncClient / httpx.Client used with base_url as a context manager:
+    // async with httpx.AsyncClient(base_url="https://api.x.com") as client:
+    //     await client.post("/v1/messages")
+    // Capture the base_url so we can link relative paths in the same block
+    {
+      regex: /(?:async\s+with\s+)?httpx\.(?:Async)?Client\s*\(\s*base_url\s*=\s*f?["']([^"'\n]+)["']/g,
+      pattern: "httpx-context-base-url",
+      urlGroup: 1,
+    },
   ];
 
   for (const { regex, pattern, methodGroup, urlGroup } of patterns) {
@@ -1127,6 +1166,214 @@ function combinePaths(prefix: string, route: string): string {
   const p = prefix ? (prefix.startsWith("/") ? prefix : `/${prefix}`) : "";
   const r = route.startsWith("/") ? route : `/${route}`;
   return `${p}${r}`.replace(/\/+/g, "/") || "/";
+}
+
+// Alias used by the new service-layer helpers (avoids shadowing the inner deduplicateCalls)
+function deduplicatePythonCalls(calls: OutboundCall[]): OutboundCall[] {
+  return deduplicateCalls(calls);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Python service-layer scanning helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map of well-known Python AI/third-party SDK class names → API base URLs.
+ * Instantiating any of these in code signals an external API dependency.
+ */
+const PYTHON_SDK_MAP: Record<string, string> = {
+  // Anthropic
+  "anthropic.Anthropic": "https://api.anthropic.com/v1/messages",
+  "Anthropic": "https://api.anthropic.com/v1/messages",
+  "anthropic.AsyncAnthropic": "https://api.anthropic.com/v1/messages",
+  "AsyncAnthropic": "https://api.anthropic.com/v1/messages",
+  // OpenAI
+  "openai.OpenAI": "https://api.openai.com/v1/chat/completions",
+  "OpenAI": "https://api.openai.com/v1/chat/completions",
+  "openai.AsyncOpenAI": "https://api.openai.com/v1/chat/completions",
+  "AsyncOpenAI": "https://api.openai.com/v1/chat/completions",
+  "AzureOpenAI": "https://api.openai.com/v1/chat/completions",
+  // LangChain - Anthropic
+  "ChatAnthropic": "https://api.anthropic.com/v1/messages",
+  "AzureChatAnthropic": "https://api.anthropic.com/v1/messages",
+  "AnthropicLLM": "https://api.anthropic.com/v1/complete",
+  // LangChain - OpenAI
+  "ChatOpenAI": "https://api.openai.com/v1/chat/completions",
+  "AzureChatOpenAI": "https://api.openai.com/v1/chat/completions",
+  "OpenAIEmbeddings": "https://api.openai.com/v1/embeddings",
+  "AzureOpenAIEmbeddings": "https://api.openai.com/v1/embeddings",
+  // LangChain - Google
+  "ChatGoogleGenerativeAI": "https://generativelanguage.googleapis.com/v1beta/",
+  "GoogleGenerativeAIEmbeddings": "https://generativelanguage.googleapis.com/v1beta/",
+  // LangChain - Cohere
+  "ChatCohere": "https://api.cohere.ai/v1/",
+  "CohereEmbeddings": "https://api.cohere.ai/v1/embed",
+  // LangChain - Groq
+  "ChatGroq": "https://api.groq.com/openai/v1/chat/completions",
+  // LangChain - Mistral
+  "ChatMistralAI": "https://api.mistral.ai/v1/chat/completions",
+  // LangChain - Ollama (local, but still worth flagging as a model dependency)
+  "ChatOllama": "http://localhost:11434/api/chat",
+  // Cohere direct
+  "cohere.Client": "https://api.cohere.ai/v1/",
+  "cohere.AsyncClient": "https://api.cohere.ai/v1/",
+  "Client": "https://api.cohere.ai/v1/", // Cohere (by import context — lower confidence)
+  // Stripe
+  "stripe.Stripe": "https://api.stripe.com/v1/",
+  // Twilio
+  "twilio.rest.Client": "https://api.twilio.com/",
+  "TwilioClient": "https://api.twilio.com/",
+  // Google Cloud (Vertex AI)
+  "vertexai.generative_models.GenerativeModel": "https://us-central1-aiplatform.googleapis.com/",
+  "GenerativeModel": "https://us-central1-aiplatform.googleapis.com/",
+  // HuggingFace
+  "InferenceClient": "https://api-inference.huggingface.co/",
+  "huggingface_hub.InferenceClient": "https://api-inference.huggingface.co/",
+};
+
+/**
+ * Scans all Python files for AI/SDK class instantiations
+ * (e.g. `client = Anthropic(api_key=...)`) and returns synthetic OutboundCalls.
+ */
+function extractPythonSDKCalls(fileContents: Map<string, string>): OutboundCall[] {
+  const calls: OutboundCall[] = [];
+
+  for (const [filePath, content] of fileContents) {
+    for (const [className, apiUrl] of Object.entries(PYTHON_SDK_MAP)) {
+      // Match: ClassName( — handles both direct and dotted names
+      // Uses word boundary or start-of-expression context
+      const escapedName = className.replace(/\./g, "\\.").replace(/\[/g, "\\[");
+      const regex = new RegExp(`(?:^|\\s|=)${escapedName}\\s*\\(`, "gm");
+      let m: RegExpExecArray | null;
+      regex.lastIndex = 0;
+      while ((m = regex.exec(content)) !== null) {
+        const lineNum = content.substring(0, m.index).split("\n").length;
+        calls.push({
+          rawUrl: apiUrl,
+          method: "POST",
+          callPattern: `${className.split(".").pop()}-sdk`,
+          sourceFile: filePath,
+          line: lineNum,
+          // Dotted names (e.g. anthropic.Anthropic) are more precise → higher confidence
+          confidence: className.includes(".") ? 0.92 : 0.80,
+        });
+        break; // one occurrence per class per file is enough
+      }
+    }
+  }
+
+  return deduplicatePythonCalls(calls);
+}
+
+/**
+ * Builds a map of httpx client variable names → their configured base_url.
+ * Handles:
+ *   client = httpx.AsyncClient(base_url="https://api.x.com")
+ *   self.client = httpx.Client(base_url="https://api.x.com")
+ *   async with httpx.AsyncClient(base_url="...") as client:
+ */
+function buildHttpxBaseUrlMap(fileContents: Map<string, string>): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const [, content] of fileContents) {
+    // Assignment form
+    const assignRegex =
+      /(?:self\.)?(\w+)\s*=\s*httpx\.(?:Async)?Client\s*\(\s*base_url\s*=\s*f?["']([^"'\n]+)["']/g;
+    let m: RegExpExecArray | null;
+    while ((m = assignRegex.exec(content)) !== null) {
+      map.set(m[1], m[2]);
+    }
+
+    // Context-manager form: async with httpx.AsyncClient(base_url="...") as varName:
+    const ctxRegex =
+      /httpx\.(?:Async)?Client\s*\(\s*base_url\s*=\s*f?["']([^"'\n]+)["'][^)]*\)\s+as\s+(\w+)/g;
+    while ((m = ctxRegex.exec(content)) !== null) {
+      map.set(m[2], m[1]); // varName → base_url
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Returns true for Python files that contain service/client logic but are not
+ * endpoint definition files (i.e., don't have any @router / @app decorators).
+ */
+function isPythonServiceModule(filePath: string, content: string, framework: SupportedFramework): boolean {
+  const hasEndpoints =
+    /@app\.(?:get|post|put|delete|patch|route)\b/.test(content) ||
+    /@router\.(?:get|post|put|delete|patch|route)\b/.test(content) ||
+    /path\s*\(["']/.test(content); // Django urls.py
+
+  if (hasEndpoints) return false; // already handled by endpoint extraction
+
+  // Only scan .py files with service-ish names or HTTP client usage
+  const fileName = path.basename(filePath).toLowerCase();
+  const isServiceLike =
+    fileName.includes("service") ||
+    fileName.includes("client") ||
+    fileName.includes("api") ||
+    fileName.includes("integration") ||
+    fileName.includes("gateway") ||
+    fileName.includes("repository") ||
+    fileName.includes("llm") ||
+    fileName.includes("ai") ||
+    fileName.includes("embed");
+
+  const hasHttpUsage =
+    content.includes("httpx") ||
+    content.includes("requests.") ||
+    content.includes("aiohttp") ||
+    content.includes("urllib.request") ||
+    /import\s+(?:anthropic|openai|cohere|groq|mistral)/.test(content) ||
+    /from\s+(?:anthropic|openai|langchain|cohere|groq|mistral)/.test(content);
+
+  void framework; // framework not needed here but kept for future use
+  return isServiceLike || hasHttpUsage;
+}
+
+/**
+ * Scans Python service/client modules (non-endpoint files) for outbound calls.
+ * For relative-path calls, tries to resolve the base URL from the httpx context map.
+ */
+function extractPythonServiceModuleCalls(
+  fileContents: Map<string, string>,
+  framework: SupportedFramework,
+  httpxBaseUrlMap: Map<string, string>,
+): OutboundCall[] {
+  const allCalls: OutboundCall[] = [];
+
+  for (const [filePath, content] of fileContents) {
+    if (!filePath.endsWith(".py")) continue;
+    if (!isPythonServiceModule(filePath, content, framework)) continue;
+
+    const rawCalls = extractPythonOutboundCalls(content, filePath);
+    if (rawCalls.length === 0) continue;
+
+    const resolved = rawCalls.map((call) => {
+      if (call.rawUrl.startsWith("http")) return call;
+
+      // Try httpx base_url + relative path combination
+      if (call.rawUrl.startsWith("/")) {
+        const callLine = content.split("\n")[Math.max(0, (call.line ?? 1) - 1)] ?? "";
+        for (const [varName, baseUrl] of httpxBaseUrlMap) {
+          if (callLine.includes(varName)) {
+            return {
+              ...call,
+              rawUrl: baseUrl.replace(/\/$/, "") + call.rawUrl,
+              confidence: Math.max(call.confidence, 0.85),
+            };
+          }
+        }
+      }
+
+      return call;
+    });
+
+    allCalls.push(...resolved);
+  }
+
+  return deduplicatePythonCalls(allCalls);
 }
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {

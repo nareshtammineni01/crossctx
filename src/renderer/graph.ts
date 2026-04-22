@@ -768,6 +768,23 @@ function buildServiceElements(forceRiskColors) {
       nodeType: 'service',
     }
   }));
+
+  // Add synthetic nodes for external dependencies (e.g. anthropic-api, openai-api)
+  // that appear as edge targets but were not scanned as services
+  const knownIds = new Set(services.map(s => s.id));
+  const externalIds = new Set(graphEdges.map(e => e.toService).filter(id => !knownIds.has(id)));
+  externalIds.forEach(extId => {
+    nodes.push({ data: {
+      id: extId,
+      label: extId,
+      endpointCount: 1,
+      color: '#8b949e',
+      language: 'unknown',
+      framework: 'unknown',
+      nodeType: 'external',
+    }});
+  });
+
   const edges = graphEdges.map((e, i) => ({
     data: {
       id: 'e' + i,
@@ -869,6 +886,34 @@ function buildControllerElements() {
     }
   });
 
+  // Add synthetic nodes for external dependencies referenced by edges but not
+  // present as controller/service nodes (e.g. svc::anthropic-api, svc::openai-api)
+  const existingNodeIds = new Set(nodes.map(n => n.data.id));
+  Array.from(edgeMap.values()).forEach(d => {
+    if (!existingNodeIds.has(d.target)) {
+      const name = d.target.startsWith('svc::') ? d.target.slice(5) : d.target;
+      nodes.push({ data: {
+        id: d.target,
+        label: name,
+        endpointCount: 1,
+        color: '#8b949e',
+        nodeType: 'external',
+      }});
+      existingNodeIds.add(d.target);
+    }
+    if (!existingNodeIds.has(d.source)) {
+      const name = d.source.startsWith('svc::') ? d.source.slice(5) : d.source;
+      nodes.push({ data: {
+        id: d.source,
+        label: name,
+        endpointCount: 1,
+        color: '#8b949e',
+        nodeType: 'external',
+      }});
+      existingNodeIds.add(d.source);
+    }
+  });
+
   const edges = Array.from(edgeMap.values()).map(d => ({ data: d }));
   return { nodes, edges };
 }
@@ -920,23 +965,44 @@ const cyStyle = [
   { selector: 'edge.dimmed', style: { 'opacity': 0.08 } },
   { selector: 'edge[type="async"]', style: { 'line-style': 'dashed', 'line-color': '#d29922', 'target-arrow-color': '#d29922', 'line-dash-pattern': [4, 4] } },
   { selector: 'edge[conditional="true"]', style: { 'line-style': 'dotted', 'line-color': '#a371f7', 'target-arrow-color': '#a371f7', 'line-dash-pattern': [2, 4], 'opacity': 0.85 } },
+  // External service nodes (not scanned — 3rd-party APIs etc.)
+  { selector: 'node[nodeType="external"]', style: {
+    'background-color': '#21262d',
+    'border-color': '#8b949e',
+    'border-width': 2,
+    'border-style': 'dashed',
+    'color': '#8b949e',
+    'width': 44,
+    'height': 44,
+    'font-style': 'italic',
+  }},
 ];
 
 const { nodes: initNodes, edges: initEdges } = currentView === 'controller'
   ? buildControllerElements()
   : buildServiceElements();
 
-const cy = cytoscape({
-  container: document.getElementById('cy'),
-  elements: [...initNodes, ...initEdges],
-  style: cyStyle,
-  layout: currentView === 'controller' || isSingleService
-    ? { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 6000, nodeOverlap: 30, idealEdgeLength: 120, padding: 50 }
-    : { name: services.length > 1 ? 'cose' : 'grid', animate: true, animationDuration: 500, nodeRepulsion: 8000, nodeOverlap: 40, idealEdgeLength: 180, padding: 60 },
-  wheelSensitivity: 0.3,
-});
+let cy;
+try {
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: [...initNodes, ...initEdges],
+    style: cyStyle,
+    layout: currentView === 'controller' || isSingleService
+      ? { name: 'cose', animate: true, animationDuration: 500, nodeRepulsion: 6000, nodeOverlap: 30, idealEdgeLength: 120, padding: 50 }
+      : { name: services.length > 1 ? 'cose' : 'grid', animate: true, animationDuration: 500, nodeRepulsion: 8000, nodeOverlap: 40, idealEdgeLength: 180, padding: 60 },
+    wheelSensitivity: 0.3,
+  });
+} catch(cyErr) {
+  console.error('Cytoscape init error:', cyErr);
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) {
+    emptyState.style.display = 'flex';
+    emptyState.innerHTML = '<h2>⚠️ Graph render error</h2><p style="font-size:13px;color:#8b949e;margin-top:8px">' + cyErr.message + '</p>';
+  }
+}
 
-if (cy.edges().length > 0) {
+if (cy && cy.edges().length > 0) {
   document.getElementById('confidence-legend').classList.add('visible');
 }
 

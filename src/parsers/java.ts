@@ -59,9 +59,20 @@ export async function parseJavaProject(
     }
   }
 
-  // Also read properties/yaml config for base URLs
+  // Also read properties/yaml config for base URLs.
+  // Glob covers the base file AND all Spring profile variants
+  // (application-prod.yml, application-staging.properties, bootstrap-local.yml, etc.)
   const configFiles = await fg(
-    ["**/application.properties", "**/application.yml", "**/application.yaml", "**/bootstrap.yml"],
+    [
+      "**/application.properties",
+      "**/application-*.properties",
+      "**/application.yml",
+      "**/application-*.yml",
+      "**/application.yaml",
+      "**/application-*.yaml",
+      "**/bootstrap.yml",
+      "**/bootstrap-*.yml",
+    ],
     { cwd: projectPath, ignore: IGNORE, absolute: true, onlyFiles: true },
   );
   for (const file of configFiles) {
@@ -86,6 +97,35 @@ export async function parseJavaProject(
 
   // Check for OpenAPI spec
   const specFile = await findOpenApiSpec(projectPath);
+
+  // ── Service-layer outbound call scan ────────────────────────────────────────
+  // Controllers only call service classes directly — the actual HTTP calls to
+  // external APIs (e.g. Anthropic, OpenAI) live in @Service/@Component classes.
+  // We scan those files too, resolve any variable-based URLs via getter-chain →
+  // YAML config lookup, then attach the discovered calls to all controller
+  // endpoints so they appear in the dependency graph.
+  const serviceLayerCalls = extractServiceLayerOutboundCalls(fileContents);
+  if (serviceLayerCalls.length > 0) {
+    if (endpoints.length > 0) {
+      // Attach to every controller endpoint (best-effort — we don't know which
+      // specific endpoint ultimately triggers which service method at static-
+      // analysis time).
+      for (const ep of endpoints) {
+        ep.outboundCalls = deduplicateCalls([...ep.outboundCalls, ...serviceLayerCalls]);
+      }
+    } else {
+      // No controllers found (pure service module) — synthesise a placeholder
+      // endpoint so the outbound calls still appear in the graph.
+      endpoints.push({
+        service: serviceName,
+        method: "INTERNAL",
+        path: "/_service",
+        fullPath: "/_service",
+        outboundCalls: serviceLayerCalls,
+        sourceFile: projectPath,
+      });
+    }
+  }
 
   return {
     projectPath,
@@ -428,6 +468,26 @@ function extractJavaOutboundCalls(content: string, filePath: string): OutboundCa
       regex: /\.url\s*\(\s*([\w.]+(?:Url|URL|Uri|URI|Endpoint|endpoint|apiUrl|url))\s*\)/gi,
       pattern: "OkHttp",
     },
+    // Apache HttpClient 5: new HttpPost("url") / new HttpGet("url")
+    {
+      regex: /new\s+Http(?:Post|Get|Put|Delete|Patch)\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "ApacheHttpClient",
+    },
+    // Apache HttpClient with variable: new HttpPost(someUrl)
+    {
+      regex: /new\s+Http(?:Post|Get|Put|Delete|Patch)\s*\(\s*([\w.]+(?:Url|URL|Uri|URI|Endpoint|endpoint))\s*\)/gi,
+      pattern: "ApacheHttpClient",
+    },
+    // WebClient.create("url") — shorthand factory
+    {
+      regex: /WebClient\.create\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "WebClient",
+    },
+    // WebClient.builder().baseUrl("url") — captured so service-layer resolver can use it
+    {
+      regex: /WebClient\.builder\s*\(\s*\)(?:\.[^;]+)?\.baseUrl\s*\(\s*["'`]([^"'`\n]+)["'`]/gi,
+      pattern: "WebClient-base",
+    },
   ];
 
   for (const { regex, pattern } of patterns) {
@@ -763,13 +823,54 @@ function extractJavaServiceUrlHints(fileContents: Map<string, string>): ServiceU
 
     // @Value("${order.service.url}") annotations in Java files
     if (fileName.endsWith(".java") || fileName.endsWith(".kt")) {
-      const valueAnnotationRegex = /@Value\s*\(\s*"\$\{([^}]+)\}"\s*\)/g;
       let match: RegExpExecArray | null;
+
+      // ── @Value-injected String fields: track fieldName → property key → URL ──
+      // Pattern: @Value("${anthropic.api.url}") private String apiUrl;
+      // This lets the outbound-call resolver map "apiUrl" → actual URL
+      const valueFieldRegex =
+        /@Value\s*\(\s*"\$\{([^}]+)\}"\s*\)\s*(?:(?:private|protected|public)\s+)?(?:final\s+)?String\s+(\w+)/g;
+      while ((match = valueFieldRegex.exec(content)) !== null) {
+        const propKey = match[1]; // "anthropic.api.url"
+        const fieldName = match[2]; // "apiUrl"
+        const keyFromField = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+
+        // Resolve property key → actual URL from config files
+        const resolvedValue = lookupPropertyInConfigFiles(propKey, fileContents);
+
+        if (!seen.has(keyFromField)) {
+          seen.add(keyFromField);
+          hints.push({ key: keyFromField, value: resolvedValue, sourceFile: filePath });
+        }
+        const propKeyUpper = propKey.toUpperCase().replace(/[.-]/g, "_");
+        if (!seen.has(propKeyUpper)) {
+          seen.add(propKeyUpper);
+          hints.push({ key: propKeyUpper, value: resolvedValue, sourceFile: filePath });
+        }
+      }
+
+      // ── Legacy @Value annotation (no field capture needed, keyword filter) ──
+      const valueAnnotationRegex = /@Value\s*\(\s*"\$\{([^}]+)\}"\s*\)/g;
       while ((match = valueAnnotationRegex.exec(content)) !== null) {
         const key = match[1].toUpperCase().replace(/\./g, "_");
         if (!seen.has(key) && /URL|HOST|ENDPOINT|SERVICE/.test(key)) {
           seen.add(key);
           hints.push({ key, value: undefined, sourceFile: filePath });
+        }
+      }
+
+      // ── Spring 6 @HttpExchange interfaces ──────────────────────────────────
+      // @HttpExchange("https://api.anthropic.com")
+      // public interface AnthropicClient {
+      //   @PostExchange("/v1/messages") Response chat(...);
+      // }
+      const httpExchangeRegex =
+        /@(?:Http|Get|Post|Put|Delete|Patch)Exchange\s*\(\s*["']([^"'\n]+)["']/g;
+      while ((match = httpExchangeRegex.exec(content)) !== null) {
+        const url = match[1];
+        if (url.startsWith("http") && !seen.has(url)) {
+          seen.add(url);
+          hints.push({ key: `HTTP_EXCHANGE_${hints.length}`, value: url, sourceFile: filePath });
         }
       }
 
@@ -841,6 +942,224 @@ function deduplicateCalls(calls: OutboundCall[]): OutboundCall[] {
     seen.add(key);
     return true;
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Config property lookup helper
+// Resolves a dotted property key (e.g. "anthropic.api.url") to its string value
+// by searching across all YAML/properties config files in memory.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function lookupPropertyInConfigFiles(
+  propertyKey: string,
+  fileContents: Map<string, string>,
+): string | undefined {
+  for (const [filePath, content] of fileContents) {
+    const isYaml = filePath.endsWith(".yml") || filePath.endsWith(".yaml");
+    const isProps = filePath.endsWith(".properties");
+    if (!isYaml && !isProps) continue;
+
+    if (isProps) {
+      // Flat key: anthropic.api.url=https://...
+      const propRegex = new RegExp(
+        `^${propertyKey.replace(/\./g, "\\.")}\\s*=\\s*(https?://[^\\s]+)`,
+        "im",
+      );
+      const m = content.match(propRegex);
+      if (m) return m[1].trim();
+    } else {
+      // YAML: multi-level — use parent + last segment approach
+      const parts = propertyKey.split(".");
+      const lastPart = parts[parts.length - 1]; // "url"
+      const parentPart = parts[parts.length - 2]; // "api" or "anthropic"
+
+      if (parentPart) {
+        const yamlPattern = new RegExp(
+          `(?:${parentPart})[\\s\\S]{0,200}?(?:${lastPart})\\s*:\\s*(https?://[^\\s\\n]+)`,
+          "im",
+        );
+        const m = content.match(yamlPattern);
+        if (m) return m[1].trim();
+      }
+      // Also try flat YAML: anthropic.api.url: https://... (Spring flat format)
+      const flatYamlPattern = new RegExp(
+        `["']?${propertyKey.replace(/\./g, "\\.")}["']?\\s*:\\s*(https?://[^\\s\\n]+)`,
+        "im",
+      );
+      const fm = content.match(flatYamlPattern);
+      if (fm) return fm[1].trim();
+    }
+  }
+  return undefined;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Service-layer outbound call extraction
+// Scans @Service/@Component/@Repository classes (not just controllers) for
+// outbound HTTP calls, then tries to resolve bare variable URLs via the
+// Spring getter-chain → YAML config pattern common in Spring Boot apps.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isServiceFile(_filePath: string, content: string): boolean {
+  return (
+    content.includes("@Service") ||
+    content.includes("@Component") ||
+    content.includes("@Repository") ||
+    content.includes("@Bean")
+  );
+}
+
+/**
+ * For a bare variable rawUrl like "apiUrl", look backwards in the file for its
+ * assignment expression:
+ *   String apiUrl = hoaProperties.getApi().getAnthropic().getApiUrl();
+ *
+ * Extract the getter-chain segment names (e.g. ["api","anthropic","apiurl"]),
+ * then search the YAML config files for a URL value whose surrounding YAML
+ * block contains one of those segment names.  Returns the resolved HTTP URL or
+ * undefined if nothing matched.
+ */
+function resolveVariableUrlViaGetterChain(
+  varName: string,
+  content: string,
+  fileContents: Map<string, string>,
+): string | undefined {
+  // Match: (String|var|final String) varName = <anything up to semicolon>
+  const assignPattern = new RegExp(
+    `(?:String|var|final\\s+String)\\s+${varName}\\s*=\\s*([^;\\n]+)`,
+    "i",
+  );
+  const assignMatch = content.match(assignPattern);
+  if (!assignMatch) return undefined;
+
+  const expr = assignMatch[1];
+
+  // Extract getter method names from the chain, e.g.
+  // "hoaProperties.getApi().getAnthropic().getApiUrl()"
+  //   → ["api", "anthropic", "apiurl"]
+  const getterNames: string[] = [];
+  const getterRegex = /\.get([A-Za-z]+)\s*\(\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = getterRegex.exec(expr)) !== null) {
+    getterNames.push(m[1].toLowerCase());
+  }
+
+  if (getterNames.length === 0) return undefined;
+
+  // Strip terminal getter that just means "get the URL value" — it carries no
+  // domain information (e.g. "apiUrl", "url", "apiEndpoint").
+  const urlAccessors = new Set(["apiurl", "url", "apiendpoint", "endpoint", "baseurl", "apikey"]);
+  const domainGetters = getterNames.filter((g) => !urlAccessors.has(g));
+
+  // For each YAML/properties config file, look for a URL value in a section
+  // whose key contains one of the domain getter names.
+  // Iterate domain getters in REVERSE order so the most specific getter
+  // (e.g. "openai", "anthropic") is tried before generic ones (e.g. "api").
+  const orderedGetters = [...domainGetters].reverse();
+
+  for (const [filePath, fileContent] of fileContents) {
+    if (!filePath.endsWith(".yml") && !filePath.endsWith(".yaml") && !filePath.endsWith(".properties"))
+      continue;
+
+    for (const getter of orderedGetters) {
+      // Build a pattern that matches the getter name (or a kebab-case variant)
+      // followed within ~5 lines by a line that contains an http URL.
+      // e.g.  anthropic:
+      //         api-url: https://api.anthropic.com/v1/messages
+      const kebab = getter.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+      const sectionPattern = new RegExp(
+        `(?:${getter}|${kebab})[\\s\\S]{0,200}?(?:api-url|api_url|url|endpoint|base-url|base_url)\\s*[=:]\\s*(https?://[^\\s\\n]+)`,
+        "im",
+      );
+      const yamlMatch = fileContent.match(sectionPattern);
+      if (yamlMatch) {
+        return yamlMatch[1].trim();
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Try to resolve a bare variable name to an actual HTTP URL by checking:
+ *  1. Spring getter-chain pattern: String x = config.getGroup().getSub().getApiUrl()
+ *  2. @Value-injected field: @Value("${x.y.url}") private String x
+ *  3. Direct string assignment: String x = "https://..."; or private String x = "https://...";
+ */
+function resolveJavaVariableUrl(
+  varName: string,
+  content: string,
+  fileContents: Map<string, string>,
+): string | undefined {
+  // Strategy 1: getter chain (already implemented separately — call it first)
+  const fromGetterChain = resolveVariableUrlViaGetterChain(varName, content, fileContents);
+  if (fromGetterChain) return fromGetterChain;
+
+  // Strategy 2: @Value annotation on a field with the same name
+  const valueRegex = new RegExp(
+    `@Value\\s*\\(\\s*"\\$\\{([^}]+)\\}"\\s*\\)\\s*(?:(?:private|protected|public)\\s+)?(?:final\\s+)?String\\s+${varName}\\b`,
+    "i",
+  );
+  const valueMatch = content.match(valueRegex);
+  if (valueMatch) {
+    const propKey = valueMatch[1];
+    const resolved = lookupPropertyInConfigFiles(propKey, fileContents);
+    if (resolved) return resolved;
+  }
+
+  // Strategy 3: direct string literal assignment in same class
+  // private String apiUrl = "https://api.anthropic.com/v1/messages";
+  // or constructor param: this.apiUrl = "https://..."
+  const directAssign = new RegExp(
+    `(?:String\\s+${varName}\\s*=|this\\.${varName}\\s*=)\\s*["']([^"'\\n]+)["']`,
+    "i",
+  );
+  const directMatch = content.match(directAssign);
+  if (directMatch && directMatch[1].startsWith("http")) return directMatch[1].trim();
+
+  return undefined;
+}
+
+/**
+ * Scans all @Service/@Component/@Repository Java files for outbound HTTP calls.
+ * Resolves bare variable URLs using getter-chain, @Value annotation, and direct
+ * assignment strategies so the external API map can identify them correctly.
+ */
+function extractServiceLayerOutboundCalls(fileContents: Map<string, string>): OutboundCall[] {
+  const allCalls: OutboundCall[] = [];
+
+  for (const [filePath, content] of fileContents) {
+    if (!filePath.endsWith(".java") && !filePath.endsWith(".kt")) continue;
+    if (isControllerFile(filePath, content)) continue; // already handled in main pass
+    if (!isServiceFile(filePath, content)) continue;
+
+    const rawCalls = extractJavaOutboundCalls(content, filePath);
+    if (rawCalls.length === 0) continue;
+
+    // For each call, try to resolve bare variable URLs
+    const resolved = rawCalls.map((call) => {
+      if (call.rawUrl.startsWith("http")) return call; // already a concrete URL
+
+      const isBareVar =
+        /^[a-zA-Z_$][a-zA-Z0-9_$.]*$/.test(call.rawUrl) && !call.rawUrl.includes(".");
+      if (!isBareVar) return call;
+
+      const resolvedUrl = resolveJavaVariableUrl(call.rawUrl, content, fileContents);
+      if (resolvedUrl) {
+        return {
+          ...call,
+          rawUrl: resolvedUrl,
+          confidence: Math.max(call.confidence, 0.85),
+        };
+      }
+      return call;
+    });
+
+    allCalls.push(...resolved);
+  }
+
+  return deduplicateCalls(allCalls);
 }
 
 async function findOpenApiSpec(projectPath: string): Promise<string | null> {
